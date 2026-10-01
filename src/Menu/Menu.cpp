@@ -136,6 +136,7 @@ namespace Menu
     constexpr float PI = 3.14159265358979323846f;
     int g_sideScrollDirection = 0;
     static float g_settingsSideLockAnimatedX = 0.0f;
+    static float g_settingsSideMouseAnimatedX = 0.0f;
     static float g_settingsPanelAnimatedMinX = 0.0f;
     static float g_settingsPanelTargetMinX = 0.0f;
     static float g_settingsPanelOffsetY = 0.0f;
@@ -291,6 +292,33 @@ namespace Menu
         return ImVec2(
             sideLockCenter.x + lockRadius + sideScrollRadius + 12.0f,
             sideLockCenter.y);
+    }
+
+    static float GetSettingsSideMouseTargetX(float lockRadius)
+    {
+        const ImVec2 sideLockCenter = GetSettingsSideLockCenter();
+        const float sideMouseRadius = lockRadius * 0.5f;
+        const float spacing = lockRadius + sideMouseRadius + 12.0f;
+        const float leftX = sideLockCenter.x - spacing;
+        const WheelLayout layout = GetWheelLayout();
+
+        // Se a posição normal sair pela borda esquerda, o controle passa para
+        // a direita do Lock Scroll. O X animado é atualizado no DrawSettings.
+        const bool wouldLeaveScreen =
+            leftX - sideMouseRadius < layout.min.x;
+        return wouldLeaveScreen
+            ? sideLockCenter.x + spacing * 2.0f
+            : leftX;
+    }
+
+    static ImVec2 GetSettingsSideMouseCenter(float lockRadius)
+    {
+        const ImVec2 sideLockCenter = GetSettingsSideLockCenter();
+        const float targetX = GetSettingsSideMouseTargetX(lockRadius);
+        const float x = g_settingsSideMouseAnimatedX > 0.0f
+            ? g_settingsSideMouseAnimatedX
+            : targetX;
+        return ImVec2(x, sideLockCenter.y);
     }
 
     static float GetTopBottomCurveWidth(bool isTop)
@@ -2770,6 +2798,16 @@ namespace Menu
         const float visibleHeight = wheelLayout.max.y - wheelLayout.min.y;
         const ImVec2 leftCenter = GetSettingsSideLockCenter();
 
+        const float sideMouseRadius = lockRadius * 0.5f;
+        const ImVec2 sideMouseCenter = GetSettingsSideMouseCenter(lockRadius);
+        const float mouseDx = mouse.x - sideMouseCenter.x;
+        const float mouseDy = mouse.y - sideMouseCenter.y;
+        if (mouseDx * mouseDx + mouseDy * mouseDy <= sideMouseRadius * sideMouseRadius)
+        {
+            g_lockSideMouse = !g_lockSideMouse;
+            return true;
+        }
+
         const float sideScrollRadius = lockRadius * 0.5f;
         const ImVec2 sideScrollCenter = GetSettingsSideScrollCenter(lockRadius);
         const float scrollDx = mouse.x - sideScrollCenter.x;
@@ -2871,6 +2909,10 @@ namespace Menu
 
         case RadialSide::Bottom:
             return g_unlockBottomMouse;
+
+        case RadialSide::Left:
+        case RadialSide::Right:
+            return !g_lockSideMouse;
 
         default:
             return false;
@@ -4080,6 +4122,7 @@ namespace Menu
         add(topLock, lockRadius);
         add(ImVec2(topLock.x, topLock.y + lockRadius + lockRadius * 0.5f + 12.0f), lockRadius * 0.5f);
         add(GetSettingsSideLockCenter(), lockRadius);
+        add(GetSettingsSideMouseCenter(lockRadius), lockRadius * 0.5f);
         add(GetSettingsSideScrollCenter(lockRadius), lockRadius * 0.5f);
         add(bottomLock, lockRadius);
         add(ImVec2(bottomLock.x, bottomLock.y - lockRadius - lockRadius * 0.5f - 12.0f), lockRadius * 0.5f);
@@ -8047,6 +8090,10 @@ namespace Menu
 
     void HandleGameplayKeyPressed()
     {
+        // Reafirma a prioridade do filtro de mouse antes de abrir o radial.
+        // Isso evita que uma reinicialização tardia do input do Skyrim deixe a
+        // câmera receber o movimento antes do filtro.
+        MaintainInputSinkPriority();
         g_radialMode = RadialMode::Gameplay;
 
         //ResetSettingsScrollCharge();
@@ -22453,6 +22500,23 @@ namespace Menu
                 dt);
         }
 
+        // A trava de câmera acompanha o grupo Side. Quando a posição à
+        // esquerda ficaria fora do monitor, ela atravessa suavemente para
+        // depois do Lock Scroll, mantendo o mesmo espaçamento entre botões.
+        constexpr float sideLockRadius = 15.0f;
+        const float sideMouseTargetX =
+            GetSettingsSideMouseTargetX(sideLockRadius);
+        if (g_settingsSideMouseAnimatedX <= 0.0f)
+            g_settingsSideMouseAnimatedX = sideMouseTargetX;
+        if (!layoutSliderDragging)
+        {
+            g_settingsSideMouseAnimatedX = AnimateSettingsValue(
+                g_settingsSideMouseAnimatedX,
+                sideMouseTargetX,
+                8.0f,
+                dt);
+        }
+
         // Layout fixo: seletor sempre horizontal e painel sempre abaixo.
         GetSettingsInfoPanel(screen);
         g_settingsSectionHorizontalTarget = true;
@@ -22536,6 +22600,17 @@ namespace Menu
         );
 
         // SIDE
+        // Lock Cam | Lock Radial | Lock Scroll. A trava de câmera fica à
+        // esquerda, na mesma distância que a trava de scroll à direita.
+        DrawRadialLockButton(
+            GetSettingsSideMouseCenter(lockRadius),
+            lockRadius * 0.5f,
+            g_lockSideMouse,
+            Language::Get("lock_mouse_movement").c_str(),
+            Language::Get("unlock_mouse_movement").c_str(),
+            true
+        );
+
         DrawRadialLockButton(
             //ImVec2(
             //    screen.x * 0.11f,
@@ -23150,6 +23225,13 @@ namespace Menu
 
     void DrawMenu()
     {
+        // PlayerControls pode ser registrado novamente depois de DataLoaded.
+        // Enquanto o radial está aberto, mantemos o filtro de mouse em frente
+        // dele para que Side sempre bloqueie a câmera e Top/Bottom respeitem
+        // suas travas individuais.
+        if (g_showWindow && g_radialMode == RadialMode::Gameplay)
+            MaintainInputSinkPriority();
+
         Gamepad::UpdateFeedback();
         // Atualiza a escala para a resolução atual.
         //UIScale::Update();

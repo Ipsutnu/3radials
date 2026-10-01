@@ -148,22 +148,42 @@ void RegisterInputSink()
     if (!deviceManager)
         return;
 
-    // Registra o nosso sink
+    // Registra o nosso sink. A prioridade definitiva é aplicada logo abaixo.
     deviceManager->AddEventSink(InputHandler::GetSingleton());
 
-    // Reordena os sinks para colocar o NOSSO no topo (índice 0)
-    // Isso garante que tratamos a tecla 'E' ANTES do PlayerControls do Skyrim
-    auto& sinks = deviceManager->sinks;
+    MaintainInputSinkPriority();
+}
 
-    for (RE::BSTArray<RE::BSTEventSink<RE::InputEvent*>*>::size_type i = 0;
-        i < sinks.size();
-        ++i)
+void MaintainInputSinkPriority()
+{
+    auto* deviceManager = RE::BSInputDeviceManager::GetSingleton();
+    if (!deviceManager)
+        return;
+
+    // A lista é usada pelo próprio Skyrim ao distribuir eventos. Nunca a
+    // reorganizamos durante essa distribuição; o próximo frame a corrige.
+    RE::BSSpinLockGuard locker(deviceManager->lock);
+    if (deviceManager->notifying)
+        return;
+
+    auto& sinks = deviceManager->sinks;
+    auto* const handler = InputHandler::GetSingleton();
+
+    auto it = std::find(sinks.begin(), sinks.end(), handler);
+    if (it == sinks.end())
     {
-        if (sinks[i] == InputHandler::GetSingleton())
-        {
-            std::swap(sinks[i], sinks[0]);
-            break;
-        }
+        // Alguns ciclos de reinicialização de input recriam a lista de sinks.
+        // Reinsere o handler já na frente para que o primeiro mouse move seja
+        // bloqueado antes de chegar ao PlayerControls.
+        sinks.push_front(handler);
+        return;
+    }
+
+    if (it != sinks.begin())
+    {
+        // O handler precisa rodar antes do PlayerControls, pois o bloqueio
+        // altera o próprio MouseMoveEvent (X/Y = 0).
+        std::rotate(sinks.begin(), it, std::next(it));
     }
 }
 

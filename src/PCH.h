@@ -208,6 +208,8 @@ inline bool g_ignoreNextGRelease = false;
 
 inline bool g_unlockTopMouse = false;
 inline bool g_unlockBottomMouse = false;
+// Side começa travado; o botão usa a mesma semântica de Lock Scroll.
+inline bool g_lockSideMouse = true;
 
 inline bool g_lockTopRadial = false;
 inline bool g_lockBottomRadial = false;

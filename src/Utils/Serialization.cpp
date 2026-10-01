@@ -40,7 +40,7 @@ namespace Serialization
     // SERIALIZATION - RADIAL LOCKS
     // ============================================================
 
-    constexpr std::uint32_t kRadialLockVersion = 4;
+    constexpr std::uint32_t kRadialLockVersion = 5;
 
     struct RadialLockSaveData
     {
@@ -53,6 +53,7 @@ namespace Serialization
         std::uint8_t bottomMouseUnlocked = 0;
         std::uint8_t sideScrollLocked = 1;
         std::uint8_t overflowEraserSelected = 0;
+        std::uint8_t sideMouseLocked = 1;
     };
 
 
@@ -102,6 +103,7 @@ namespace Serialization
             Config::g_lockSideScroll ? 1 : 0;
         data.overflowEraserSelected =
             TrackEditor::IsOverflowEraserSelected() ? 1 : 0;
+        data.sideMouseLocked = g_lockSideMouse ? 1 : 0;
 
         // ========================================================
         // ABRE O REGISTRO
@@ -136,12 +138,13 @@ namespace Serialization
         Logger::GetSingleton().Print(
             "SERIALIZATION | Locks saved | "
             "TOP={} BOTTOM={} SIDE={} | "
-            "MOUSE TOP={} BOTTOM={} | SCROLL={}",
+            "MOUSE TOP={} BOTTOM={} SIDE={} | SCROLL={}",
             data.topLocked,
             data.bottomLocked,
             data.sideLocked,
             data.topMouseUnlocked,
             data.bottomMouseUnlocked,
+            data.sideMouseLocked,
             data.sideScrollLocked
         );
     }
@@ -158,7 +161,7 @@ namespace Serialization
         // VALIDA A VERSÃO
         // ========================================================
 
-        if (version != 1 && version != 2 && version != 3 &&
+        if (version != 1 && version != 2 && version != 3 && version != 4 &&
             version != kRadialLockVersion)
         {
             Logger::GetSingleton().Print(
@@ -216,6 +219,7 @@ namespace Serialization
             // Opções novas permanecem desativadas em saves antigos.
             g_unlockTopMouse = false;
             g_unlockBottomMouse = false;
+            g_lockSideMouse = true;
 
             Logger::GetSingleton().Print(
                 "SERIALIZATION | Legacy locks loaded | "
@@ -251,6 +255,7 @@ namespace Serialization
             g_unlockTopMouse = data.topMouseUnlocked != 0;
             g_unlockBottomMouse = data.bottomMouseUnlocked != 0;
             Config::g_lockSideScroll = true;
+            g_lockSideMouse = true;
             return;
         }
 
@@ -274,7 +279,35 @@ namespace Serialization
             g_unlockTopMouse = data.topMouseUnlocked != 0;
             g_unlockBottomMouse = data.bottomMouseUnlocked != 0;
             Config::g_lockSideScroll = data.sideScrollLocked != 0;
+            g_lockSideMouse = true;
             TrackEditor::SetOverflowEraserSelected(false);
+            return;
+        }
+
+        // Versão 4: Lock Scroll + seletor de borracha, antes do Lock Cam do Side.
+        if (version == 4)
+        {
+            struct Version4RadialLockSaveData
+            {
+                std::uint8_t topLocked;
+                std::uint8_t bottomLocked;
+                std::uint8_t sideLocked;
+                std::uint8_t topMouseUnlocked;
+                std::uint8_t bottomMouseUnlocked;
+                std::uint8_t sideScrollLocked;
+                std::uint8_t overflowEraserSelected;
+            };
+            if (length != sizeof(Version4RadialLockSaveData)) return;
+            Version4RadialLockSaveData data{};
+            if (serialization->ReadRecordData(&data, sizeof(data)) != sizeof(data)) return;
+            g_lockTopRadial = data.topLocked != 0;
+            g_lockBottomRadial = data.bottomLocked != 0;
+            g_lockSideRadial = data.sideLocked != 0;
+            g_unlockTopMouse = data.topMouseUnlocked != 0;
+            g_unlockBottomMouse = data.bottomMouseUnlocked != 0;
+            Config::g_lockSideScroll = data.sideScrollLocked != 0;
+            TrackEditor::SetOverflowEraserSelected(data.overflowEraserSelected != 0);
+            g_lockSideMouse = true;
             return;
         }
 
@@ -328,6 +361,9 @@ namespace Serialization
         g_unlockBottomMouse =
             data.bottomMouseUnlocked != 0;
 
+        g_lockSideMouse =
+            data.sideMouseLocked != 0;
+
         Config::g_lockSideScroll =
             data.sideScrollLocked != 0;
 
@@ -341,12 +377,13 @@ namespace Serialization
         Logger::GetSingleton().Print(
             "SERIALIZATION | Locks loaded | "
             "TOP={} BOTTOM={} SIDE={} | "
-            "MOUSE TOP={} BOTTOM={} | SCROLL={}",
+            "MOUSE TOP={} BOTTOM={} SIDE={} | SCROLL={}",
             g_lockTopRadial,
             g_lockBottomRadial,
             g_lockSideRadial,
             g_unlockTopMouse,
             g_unlockBottomMouse,
+            g_lockSideMouse,
             Config::g_lockSideScroll
         );
     }
@@ -777,6 +814,7 @@ namespace Serialization
 
         g_unlockTopMouse = false;
         g_unlockBottomMouse = false;
+        g_lockSideMouse = true;
 
         Config::g_lockSideScroll = true;
 
@@ -958,6 +996,7 @@ namespace Serialization
 
         g_unlockTopMouse = false;
         g_unlockBottomMouse = false;
+        g_lockSideMouse = true;
 
         // Estado temporário da tecla G.
         g_radialToggleLocked = false;
