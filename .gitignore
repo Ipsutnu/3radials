@@ -1,0 +1,36 @@
+# Build / CMake
+/build/
+/out/
+/cmake-build-*/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/compile_commands.json
+
+# Binários e símbolos locais
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.obj
+*.lib
+*.exp
+
+# Dependências instaladas localmente pelo vcpkg
+/vcpkg_installed/
+
+# IDE
+/.vs/
+/.vscode/settings.json
+/.vscode/
+/.idea/
+
+# Backups e arquivos locais acidentais
+
+/BKP/
+/bkp/
+/gerados/
+/%SystemDrive%/
+
+# Arquivos do Skyrim que não pertencem ao fonte
+*.bsa
