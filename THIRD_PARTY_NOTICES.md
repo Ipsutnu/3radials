@@ -40,6 +40,22 @@ Licensed under the MIT License:
 > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 > SOFTWARE.
 
+## NanoSVG
+
+Copyright (c) 2013-2014 Mikko Mononen.
+
+Source: <https://github.com/memononen/nanosvg>
+
+3radials uses NanoSVG and NanoSVGRast to parse and rasterize SVG icon assets
+in memory. NanoSVG is distributed under the following permissive license:
+
+> This software is provided 'as-is', without any express or implied warranty.
+> In no event will the authors be held liable for any damages arising from the
+> use of this software. Permission is granted to anyone to use this software
+> for any purpose, including commercial applications, and to alter it and
+> redistribute it freely, subject to the condition that this notice is not
+> removed or altered from any source distribution.
+
 ## SkyUI Icons
 
 Some icons used by 3radials were originally created for SkyUI.

@@ -2,24 +2,9 @@
 
 #include "Config.h"
 #include "Logger.h"
+#include "SvgRasterizer.h"
 
 #include <Windows.h>
-// O SDK marca as interfaces SVG modernas como API de app. Skyrim continua
-// sendo um processo desktop normal; liberamos só as declarações deste header.
-#pragma push_macro("WINAPI_FAMILY")
-#pragma push_macro("WINAPI_PARTITION_APP")
-#pragma push_macro("NTDDI_VERSION")
-#undef WINAPI_FAMILY
-#undef WINAPI_PARTITION_APP
-#undef NTDDI_VERSION
-#define WINAPI_FAMILY WINAPI_FAMILY_APP
-#define WINAPI_PARTITION_APP 1
-#define NTDDI_VERSION NTDDI_WIN10_RS2
-#include <d2d1_3.h>
-#include <d2d1helper.h>
-#pragma pop_macro("NTDDI_VERSION")
-#pragma pop_macro("WINAPI_PARTITION_APP")
-#pragma pop_macro("WINAPI_FAMILY")
 #include <wincodec.h>
 #include <wrl/client.h>
 
@@ -50,9 +35,6 @@ namespace IconCustom
 
         ID3D11Device* g_device = nullptr;
         IWICImagingFactory* g_wicFactory = nullptr;
-        Microsoft::WRL::ComPtr<ID2D1Factory1> g_d2dFactory;
-        Microsoft::WRL::ComPtr<ID2D1Device> g_d2dDevice;
-        Microsoft::WRL::ComPtr<ID2D1DeviceContext5> g_d2dContext;
         bool g_initialized = false;
 
         // Keyword em minúsculas -> arquivo KWD_<keyword>.svg/png.
@@ -92,35 +74,6 @@ namespace IconCustom
             g_textures.clear();
             g_formCache.clear();
             g_unresolvedForms.clear();
-        }
-
-        [[nodiscard]] bool InitializeD2D()
-        {
-            if (!g_device)
-                return false;
-            if (g_d2dContext)
-                return true;
-
-            Microsoft::WRL::ComPtr<IDXGIDevice> dxgiDevice;
-            if (FAILED(g_device->QueryInterface(IID_PPV_ARGS(dxgiDevice.GetAddressOf()))))
-                return false;
-
-            D2D1_FACTORY_OPTIONS options{};
-            Microsoft::WRL::ComPtr<ID2D1DeviceContext> baseContext;
-            if (FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,
-                    __uuidof(ID2D1Factory1), &options,
-                    reinterpret_cast<void**>(g_d2dFactory.GetAddressOf()))) ||
-                FAILED(g_d2dFactory->CreateDevice(dxgiDevice.Get(), g_d2dDevice.GetAddressOf())) ||
-                FAILED(g_d2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE,
-                    baseContext.GetAddressOf())) ||
-                FAILED(baseContext.As(&g_d2dContext)))
-            {
-                g_d2dContext.Reset();
-                g_d2dDevice.Reset();
-                g_d2dFactory.Reset();
-                return false;
-            }
-            return true;
         }
 
         ID3D11ShaderResourceView* CreateTexture(const void* a_pixels, UINT a_pitch)
@@ -183,82 +136,6 @@ namespace IconCustom
             return CreateTexture(pixels.data(), kIconTextureSize * 4);
         }
 
-        ID3D11ShaderResourceView* LoadSvg(const std::filesystem::path& a_path)
-        {
-            if (!InitializeD2D() || !std::filesystem::is_regular_file(a_path))
-                return nullptr;
-
-            std::ifstream file(a_path, std::ios::binary);
-            const std::vector<char> bytes((std::istreambuf_iterator<char>(file)),
-                std::istreambuf_iterator<char>());
-            if (!file || bytes.empty())
-                return nullptr;
-
-            HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes.size());
-            if (!memory)
-                return nullptr;
-            void* destination = GlobalLock(memory);
-            if (!destination)
-            {
-                GlobalFree(memory);
-                return nullptr;
-            }
-            std::memcpy(destination, bytes.data(), bytes.size());
-            GlobalUnlock(memory);
-
-            Microsoft::WRL::ComPtr<IStream> stream;
-            if (FAILED(CreateStreamOnHGlobal(memory, TRUE, stream.GetAddressOf())))
-            {
-                GlobalFree(memory);
-                return nullptr;
-            }
-
-            Microsoft::WRL::ComPtr<ID2D1SvgDocument> document;
-            if (FAILED(g_d2dContext->CreateSvgDocument(stream.Get(),
-                    D2D1::SizeF(static_cast<float>(kIconTextureSize),
-                        static_cast<float>(kIconTextureSize)), document.GetAddressOf())))
-                return nullptr;
-
-            D3D11_TEXTURE2D_DESC description{};
-            description.Width = kIconTextureSize;
-            description.Height = kIconTextureSize;
-            description.MipLevels = 1;
-            description.ArraySize = 1;
-            description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-            description.SampleDesc.Count = 1;
-            description.Usage = D3D11_USAGE_DEFAULT;
-            description.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-
-            Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
-            Microsoft::WRL::ComPtr<IDXGISurface> surface;
-            Microsoft::WRL::ComPtr<ID2D1Bitmap1> target;
-            Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> view;
-            if (FAILED(g_device->CreateTexture2D(&description, nullptr, texture.GetAddressOf())) ||
-                FAILED(texture.As(&surface)))
-                return nullptr;
-
-            const auto properties = D2D1::BitmapProperties1(
-                D2D1_BITMAP_OPTIONS_TARGET,
-                D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
-                    D2D1_ALPHA_MODE_PREMULTIPLIED));
-            if (FAILED(g_d2dContext->CreateBitmapFromDxgiSurface(surface.Get(),
-                    &properties, target.GetAddressOf())))
-                return nullptr;
-
-            // SVG é rasterizado apenas em memória e diretamente na GPU.
-            // Não há arquivo PNG intermediário nem readback para CPU.
-            g_d2dContext->SetTarget(target.Get());
-            g_d2dContext->BeginDraw();
-            g_d2dContext->Clear(D2D1::ColorF(0, 0.0f));
-            g_d2dContext->DrawSvgDocument(document.Get());
-            const HRESULT result = g_d2dContext->EndDraw();
-            g_d2dContext->SetTarget(nullptr);
-            if (FAILED(result) || FAILED(g_device->CreateShaderResourceView(texture.Get(),
-                    nullptr, view.GetAddressOf())))
-                return nullptr;
-            return view.Detach();
-        }
-
         void IndexSources()
         {
             g_sources.clear();
@@ -298,7 +175,9 @@ namespace IconCustom
             const std::string key = a_source.path.lexically_normal().string();
             if (const auto found = g_textures.find(key); found != g_textures.end())
                 return found->second;
-            auto* texture = a_source.svg ? LoadSvg(a_source.path) : LoadPng(a_source.path);
+            auto* texture = a_source.svg
+                ? SvgRasterizer::Load(g_device, a_source.path, kIconTextureSize)
+                : LoadPng(a_source.path);
             if (texture)
                 g_textures.emplace(key, texture);
             return texture;
@@ -322,9 +201,6 @@ namespace IconCustom
     {
         ReleaseTextures();
         g_sources.clear();
-        g_d2dContext.Reset();
-        g_d2dDevice.Reset();
-        g_d2dFactory.Reset();
         if (g_wicFactory) { g_wicFactory->Release(); g_wicFactory = nullptr; }
         g_device = nullptr;
         g_initialized = false;

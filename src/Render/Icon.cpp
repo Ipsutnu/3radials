@@ -2,6 +2,8 @@
 #include "IconCustom.h"
 #include "RenderManager.h"
 #include "Config.h"
+#include "Logger.h"
+#include "SvgRasterizer.h"
 
 #include <RE/Skyrim.h>
 
@@ -451,7 +453,6 @@ namespace ItemIcon
             return srv;
         }
 
-
         // ============================================================
         // MAGIC
         // ============================================================
@@ -896,16 +897,30 @@ namespace ItemIcon
             L"Data\\SKSE\\Plugins\\3radials\\Icons";
 
 
+        std::size_t svgLoaded = 0;
+        std::size_t svgFailed = 0;
+        std::size_t pngLoaded = 0;
         for (const auto& entry : ICON_FILES)
         {
-            const auto path =
+            const auto pngPath =
                 basePath / entry.filename;
+            auto svgPath = pngPath;
+            svgPath.replace_extension(L".svg");
 
-
-            auto* srv =
-                LoadPNG(
-                    device,
-                    path);
+            // Os SVGs-base têm prioridade para preservar nitidez em qualquer
+            // escala. O PNG com o mesmo nome continua sendo o fallback.
+            const bool hasSvg = std::filesystem::is_regular_file(svgPath);
+            auto* srv = hasSvg ? SvgRasterizer::Load(device, svgPath) : nullptr;
+            if (srv)
+                ++svgLoaded;
+            else if (hasSvg)
+                ++svgFailed;
+            if (!srv)
+            {
+                srv = LoadPNG(device, pngPath);
+                if (srv)
+                    ++pngLoaded;
+            }
 
 
             if (srv)
@@ -913,6 +928,10 @@ namespace ItemIcon
                 g_icons[entry.type] = srv;
             }
         }
+
+        Logger::GetSingleton().Print(
+            "Base Icons: SVG loaded={} failed={} | PNG fallback loaded={}",
+            svgLoaded, svgFailed, pngLoaded);
 
 
         g_initialized = true;
@@ -951,7 +970,6 @@ namespace ItemIcon
             g_wicFactory->Release();
             g_wicFactory = nullptr;
         }
-
 
         g_initialized = false;
     }

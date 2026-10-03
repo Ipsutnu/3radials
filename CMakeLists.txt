@@ -63,6 +63,7 @@ add_commonlibsse_plugin(${PROJECT_NAME}
         src/Animation/Track/TrackMovement.cpp
         src/Render/Icon.cpp
         src/Render/IconCustom.cpp
+        src/Render/SvgRasterizer.cpp
         src/Item/Item.cpp
         src/Item/ItemInfo.cpp
         #src/Blur.cpp
@@ -113,6 +114,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Item
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
+    ${CMAKE_CURRENT_SOURCE_DIR}/external/nanosvg/src
 )
 
 
@@ -126,7 +128,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     d3d11
     dxgi
     d3dcompiler
-    d2d1
     ole32
 )
 
