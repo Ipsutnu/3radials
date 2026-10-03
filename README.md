@@ -23,11 +23,11 @@ Copy the binary file `3radials.dll` and the folder `3radials` to
 
 ## Controls
 
-All bindings can be changed from **WheelSettings → Settings**. `First Key`,
+All bindings can be changed from **Settings**. `First Key`,
 `Second Key`, and `Alt Config Key` have no fixed keyboard default in this
 table because they are user-configurable.
 
-| Action | Keyboard / Mouse | Xbox / XInput Controller |
+| Action | Keyboard / Mouse | Controller |
 | --- | --- | --- |
 | Open a radial | Hold **First Key** or **Second Key**, then choose a direction | Hold the configured **First/Second Key**, then use the D-pad or a stick direction |
 | Open Top / Bottom / Left / Right directly | **Arrow keys** or **Numpad 8 / 2 / 4 / 6** while the activation key is held; they can also open directly when **Open Menu with arrows** is enabled | **D-pad** direction while the activation key is held |
