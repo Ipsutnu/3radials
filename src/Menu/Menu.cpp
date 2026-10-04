@@ -484,10 +484,21 @@ namespace Menu
         bool returning = false;
 
         ImVec2 returnPosition{ 0.0f, 0.0f };
+
+        // A primeira lista de hitboxes ainda contém o item antes de ele ser
+        // removido. Só usamos posições visuais para o drop depois de um novo
+        // frame ter redesenhado os itens restantes.
+        std::uint64_t hitboxGeneration = 0;
+
+        // O radial lateral é uma lista circular. Guardamos a origem visual
+        // antes de remover a instância para distinguir corretamente uma
+        // peça principal de uma excedente mesmo quando o anel está girado.
+        int sideScrollOffsetBeforeRemoval = 0;
     };
 
     static std::vector<SettingsItemHitbox>
         g_settingsItemHitboxes;
+    static std::uint64_t g_settingsHitboxGeneration = 0;
 
     static std::unordered_map<
         RE::TESForm*,
@@ -2387,6 +2398,15 @@ namespace Menu
         // Acomodação mais lenta usada apenas quando o editor altera a lista
         // em tempo real durante um drag.
         bool settingsDropSettling = false;
+
+        // Entrada visual exclusiva do circuito custom no WheelSettings. O
+        // TrackMovement mantém distância própria no trilho; sem este estado,
+        // um item solto fora dele reaparecia no slot antigo antes de seguir
+        // até o novo. Esta transição começa exatamente no cursor e termina
+        // no slot recém-calculado.
+        bool settingsCustomDropEntering = false;
+        float settingsCustomDropProgress = 0.0f;
+        ImVec2 settingsCustomDropStart{ 0.0f, 0.0f };
 
         // Reorganização visual exclusiva do menu de inventário. Este estado
         // não pode compartilhar progresso com o circuito/Gameplay: ao fechar
@@ -5213,6 +5233,8 @@ namespace Menu
         g_settingsDrag = {};
 
         g_settingsDrag.active = true;
+        g_settingsDrag.hitboxGeneration = g_settingsHitboxGeneration;
+        g_settingsDrag.sideScrollOffsetBeforeRemoval = g_sideScrollOffset;
 
         g_settingsDrag.form = item.form;
         g_settingsDrag.uniqueID = item.uniqueID;
@@ -5242,6 +5264,13 @@ namespace Menu
             hitbox.side == RadialSide::Left || hitbox.side == RadialSide::Right;
         if (sideTopologyChanged)
         {
+            // Os itens laterais são lidos a partir de g_sideScrollOffset.
+            // Remover uma entrada fisicamente anterior a esse ponto desloca
+            // todos os índices seguintes em -1. Sem compensar, o primeiro
+            // excedente e o último principal trocavam de apresentação até o
+            // drop, embora a quantidade de excedentes continuasse correta.
+            if (hitbox.index < g_sideScrollOffset)
+                --g_sideScrollOffset;
             g_sideScrollOffset = items->empty()
                 ? 0
                 : WrapSideIndex(g_sideScrollOffset,
@@ -5359,6 +5388,112 @@ namespace Menu
     }
 
         
+    // Detector isolado para o radial lateral customizado do WheelSettings.
+    // A ordem vem dos slots do circuito, mas os segmentos usam as posições
+    // finais que foram desenhadas neste frame. Assim a decisão respeita a
+    // acomodação, a flutuação e a repulsão do drag, sem alterar os efeitos.
+    static int GetSettingsCustomSideCircuitInsertIndex(
+        RadialSide side,
+        const ImVec2& mouse)
+    {
+        if ((side != RadialSide::Left && side != RadialSide::Right) ||
+            !Config::g_customRadial ||
+            !Track::HasValidSavedLayout())
+        {
+            return -1;
+        }
+
+        const int total = static_cast<int>(g_sideItems.size());
+        if (total <= 0)
+            return 0;
+
+        const bool leftSide = side == RadialSide::Left;
+        const WheelLayout layout = GetWheelLayout();
+        const ImVec2 center = leftSide ? layout.leftRadial : layout.rightRadial;
+        const int mainCount = std::min(total, GetSideVisibleLimit());
+        const auto shape = static_cast<RadialShape::Style>(std::clamp(
+            Config::g_radialShape, 0, RadialShape::Count() - 1));
+        const auto slots = Track::CircuitSlots(
+            center, GetSideRadialRadius(), leftSide, mainCount,
+            total - mainCount, shape);
+        if (slots.size() != static_cast<std::size_t>(total))
+            return -1;
+
+        struct CircuitNode
+        {
+            int ordinal{};
+            int itemIndex{};
+            ImVec2 position{};
+        };
+        std::vector<CircuitNode> nodes;
+        nodes.reserve(slots.size());
+        const bool visualHitboxesReady = g_settingsDrag.active &&
+            g_settingsHitboxGeneration > g_settingsDrag.hitboxGeneration;
+        for (const auto& slot : slots)
+        {
+            const int itemIndex = WrapSideIndex(
+                g_sideScrollOffset + slot.ordinal, total);
+            ImVec2 visualPosition = slot.position;
+
+            // Só usa hitboxes após um frame com a lista já sem o item
+            // arrastado. Antes disso o índice ainda representaria a ordem
+            // antiga e o fallback para o slot-base é mais seguro.
+            if (visualHitboxesReady)
+            {
+                const auto hitbox = std::ranges::find_if(
+                    g_settingsItemHitboxes,
+                    [&](const SettingsItemHitbox& candidate) {
+                        return candidate.side == side &&
+                            candidate.index == itemIndex;
+                    });
+                if (hitbox != g_settingsItemHitboxes.end())
+                    visualPosition = hitbox->position;
+            }
+
+            nodes.push_back({
+                slot.ordinal,
+                itemIndex,
+                visualPosition
+            });
+        }
+        std::ranges::sort(nodes, {}, &CircuitNode::ordinal);
+
+        if (nodes.size() == 1)
+            return 0;
+
+        float closestDistanceSq = FLT_MAX;
+        std::size_t nextNode = 0;
+        for (std::size_t i = 0; i < nodes.size(); ++i)
+        {
+            const ImVec2 a = nodes[i].position;
+            const ImVec2 b = nodes[(i + 1) % nodes.size()].position;
+            const float dx = b.x - a.x;
+            const float dy = b.y - a.y;
+            const float lengthSq = dx * dx + dy * dy;
+            if (lengthSq <= 0.001f)
+                continue;
+
+            const float t = std::clamp(
+                ((mouse.x - a.x) * dx + (mouse.y - a.y) * dy) / lengthSq,
+                0.0f,
+                1.0f);
+            const float projectedX = a.x + dx * t;
+            const float projectedY = a.y + dy * t;
+            const float distanceX = mouse.x - projectedX;
+            const float distanceY = mouse.y - projectedY;
+            const float distanceSq = distanceX * distanceX + distanceY * distanceY;
+            if (distanceSq < closestDistanceSq)
+            {
+                closestDistanceSq = distanceSq;
+                nextNode = (i + 1) % nodes.size();
+            }
+        }
+
+        // Inserir antes do próximo nó equivale a colocá-lo exatamente entre
+        // os dois itens que delimitam o ponto projetado no circuito.
+        return nodes[nextNode].itemIndex;
+    }
+
     static int GetSettingsInsertIndex(
         RadialSide side,
         const ImVec2& mouse)
@@ -5372,6 +5507,13 @@ namespace Menu
 
         if (total == 0)
             return 0;
+
+        if (const int circuitIndex = GetSettingsCustomSideCircuitInsertIndex(
+                side, mouse);
+            circuitIndex >= 0)
+        {
+            return std::clamp(circuitIndex, 0, total);
+        }
 
         const SettingsItemHitbox* closest = nullptr;
 
@@ -5477,7 +5619,8 @@ namespace Menu
         auto* targetList =
             GetSettingsItemList(targetSide);
 
-        auto seedAnimationAtDrop = [&](const ImVec2& position) {
+        auto seedAnimationAtDrop = [&](const ImVec2& position,
+                                       RadialSide dropSide) {
             const RadialAnimKey key{ drag.form, drag.uniqueID, drag.hasUniqueID };
             auto [it, inserted] = g_itemAnimCache.try_emplace(key);
             auto& anim = it->second;
@@ -5489,6 +5632,52 @@ namespace Menu
             anim.sideWrapActive = false;
             anim.sideWrapTargetInitialized = false;
             anim.settingsDropSettling = true;
+
+            // Um radial custom só usa TrackMovement quando há excedentes.
+            // Com apenas os itens principais, ele mantém a animação polar
+            // normal do radial. Escolher o controlador real aqui evita que
+            // a semente seja aplicada ao estado que não será desenhado.
+            const bool customUsesCircuit =
+                Config::g_customRadial &&
+                Track::HasValidSavedLayout() &&
+                static_cast<int>(g_sideItems.size()) > GetSideVisibleLimit();
+
+            if (customUsesCircuit &&
+                (dropSide == RadialSide::Left || dropSide == RadialSide::Right))
+            {
+                // A distância armazenada pertence ao slot de origem. O
+                // próximo UpdateCircuit precisa resolver o novo slot, mas a
+                // apresentação deve continuar visível a partir do cursor.
+                anim.customTrackAnimation = {};
+                anim.settingsCustomDropStart = position;
+                anim.settingsCustomDropProgress = 0.0f;
+                anim.settingsCustomDropEntering = true;
+            }
+
+            // No radial Legacy, o estado polar anterior ainda apontava para
+            // o slot de onde o item foi retirado. RadialAnimation::Update()
+            // desenhava esse estado por um frame antes de seguir ao novo
+            // destino, criando o "fantasma" no slot antigo. Semeia o estado
+            // diretamente na posição do item em drag para ele ir ao slot
+            // novo sem reaparecer no anterior. O custom sem excedentes usa
+            // este mesmo controlador polar; apenas o custom com circuito
+            // completo usa o TrackMovement acima.
+            if (!customUsesCircuit &&
+                (dropSide == RadialSide::Left || dropSide == RadialSide::Right))
+            {
+                const WheelLayout layout = GetWheelLayout();
+                const ImVec2 center = dropSide == RadialSide::Left
+                    ? layout.leftRadial : layout.rightRadial;
+                const float dx = position.x - center.x;
+                const float dy = position.y - center.y;
+                auto& state = anim.gameplayRadialAnimation;
+                state = {};
+                state.position = position;
+                state.lastTarget = position;
+                state.angle = std::atan2(dy, dx);
+                state.radius = std::sqrt(dx * dx + dy * dy);
+                state.initialized = true;
+            }
             (void)inserted;
         };
 
@@ -5512,7 +5701,7 @@ namespace Menu
             sourceList->insert(sourceList->begin() + restoreIndex, drag.item);
             for (int i = 0; i < static_cast<int>(sourceList->size()); ++i)
                 (*sourceList)[i].slot = i;
-            seedAnimationAtDrop(drag.position);
+            seedAnimationAtDrop(drag.position, drag.sourceSide);
             settleList(*sourceList);
             if (sourceList == &g_sideItems)
                 g_settingsTopologySettleRemaining = 0.30f;
@@ -5549,7 +5738,7 @@ namespace Menu
             targetList->begin() + insertIndex,
             std::move(movedItem)
         );
-        seedAnimationAtDrop(drag.position);
+        seedAnimationAtDrop(drag.position, targetSide);
         settleList(*sourceList);
         if (sourceList != targetList)
             settleList(*targetList);
@@ -14375,6 +14564,36 @@ namespace Menu
         return anim.currentPos;
     }
 
+    static ImVec2 GetSettingsCustomDropEntryPosition(
+        RadialItemAnimation& anim, const ImVec2& target, float deltaTime)
+    {
+        if (!anim.settingsCustomDropEntering)
+            return target;
+
+        // A distância do TrackMovement já foi resolvida para o novo slot.
+        // Interpolamos somente a apresentação de entrada, sem alterar a
+        // posição lógica do circuito nem reintroduzir o slot de origem.
+        constexpr float kEntryDuration = 0.20f;
+        anim.settingsCustomDropProgress = std::min(
+            1.0f,
+            anim.settingsCustomDropProgress +
+                std::clamp(deltaTime, 0.0f, 1.0f / 30.0f) / kEntryDuration);
+        const float t = anim.settingsCustomDropProgress;
+        const float smoothT = t * t * (3.0f - 2.0f * t);
+        const ImVec2 position(
+            anim.settingsCustomDropStart.x +
+                (target.x - anim.settingsCustomDropStart.x) * smoothT,
+            anim.settingsCustomDropStart.y +
+                (target.y - anim.settingsCustomDropStart.y) * smoothT);
+
+        if (t >= 1.0f)
+        {
+            anim.settingsCustomDropEntering = false;
+            anim.settingsDropSettling = false;
+        }
+        return position;
+    }
+
     static ImVec2 GetInventoryDropSettlingPosition(
         RadialItemAnimation& anim, const ImVec2& target, float deltaTime)
     {
@@ -15618,7 +15837,39 @@ namespace Menu
 
         const int maxVisible = GetSideVisibleLimit();
 
-        const int visibleCount = std::min(totalItems, maxVisible);
+        int visibleCount = std::min(totalItems, maxVisible);
+
+        // No WheelSettings a instância arrastada é removida da lista assim
+        // que o drag começa. No Legacy, se ela veio da camada principal, a
+        // compactação imediata promovia o primeiro excedente para o último
+        // slot principal até o drop. Mantemos a fronteira visual anterior
+        // durante o drag: os itens restantes se acomodam, mas nenhum
+        // excedente muda de camada só porque há uma peça no cursor.
+        const bool preserveLegacyOverflowBoundary =
+            SettingsMenu::WheelSettingsMenu::IsOpen() &&
+            g_settingsDrag.active &&
+            !Config::g_customRadial &&
+            (g_settingsDrag.sourceSide == RadialSide::Left ||
+                g_settingsDrag.sourceSide == RadialSide::Right);
+        const int preDragTotal = totalItems + 1;
+        const int preDragVisibleCount = std::min(preDragTotal, maxVisible);
+        const int sourceVisualOrdinal = preDragTotal > 0
+            ? WrapSideIndex(
+                g_settingsDrag.sourceIndex -
+                    g_settingsDrag.sideScrollOffsetBeforeRemoval,
+                preDragTotal)
+            : -1;
+        if (preserveLegacyOverflowBoundary &&
+            preDragTotal > maxVisible)
+        {
+            if (g_settingsDrag.sourceIndex >= 0 &&
+                sourceVisualOrdinal >= 0 &&
+                sourceVisualOrdinal < preDragVisibleCount &&
+                visibleCount > 0)
+            {
+                --visibleCount;
+            }
+        }
 
         //const int maxOffset = std::max(0, totalItems - visibleCount);
         //g_sideScrollOffset = std::clamp(g_sideScrollOffset, 0, maxOffset);
@@ -15949,7 +16200,13 @@ namespace Menu
                             i < static_cast<int>(customMainSlots.size())
                                 ? customMainSlots[static_cast<std::size_t>(i)].circuitT
                                 : -1.0f);
+                    if (settingsOpen && !resizingCustomRadial)
+                    {
+                        itemPos = GetSettingsCustomDropEntryPosition(
+                            anim, itemPos, deltaTime);
+                    }
                     if (settingsOpen && anim.settingsDropSettling &&
+                        !anim.settingsCustomDropEntering &&
                         anim.customTrackAnimation.progress >= 1.0f)
                     {
                         anim.settingsDropSettling = false;
@@ -16409,7 +16666,13 @@ namespace Menu
                                 i < static_cast<int>(customOverflowSlots.size())
                                     ? customOverflowSlots[static_cast<std::size_t>(i)].circuitT
                                     : -1.0f);
+                        if (settingsOpen && !resizingCustomRadial)
+                        {
+                            overflowPos = GetSettingsCustomDropEntryPosition(
+                                anim, overflowPos, deltaTime);
+                        }
                         if (settingsOpen && anim.settingsDropSettling &&
+                            !anim.settingsCustomDropEntering &&
                             anim.customTrackAnimation.progress >= 1.0f)
                         {
                             anim.settingsDropSettling = false;
@@ -17040,21 +17303,21 @@ namespace Menu
         // OBTÉM O NOME DA INSTÂNCIA
         // ============================================================
 
-        const std::string itemName =
-            GetRadialItemDisplayName(draggedItem);
+        //const std::string itemName =
+        //    GetRadialItemDisplayName(draggedItem);
 
-        const char* name = itemName.c_str();
+        //const char* name = itemName.c_str();
 
-        if (!name || !name[0])
-            name = Language::Get("item").c_str();
+        //if (!name || !name[0])
+        //    name = Language::Get("item").c_str();
 
-        ImVec2 textSize = ImGui::CalcTextSize(name);
+        //ImVec2 textSize = ImGui::CalcTextSize(name);
 
-        draw->AddText(
-            ImVec2(pos.x - textSize.x * 0.5f, pos.y + radius + 8.0f),
-            FadeColor(IM_COL32(255, 255, 255, 255), g_globalAlpha),
-            name
-        );
+        //draw->AddText(
+        //    ImVec2(pos.x - textSize.x * 0.5f, pos.y + radius + 8.0f),
+        //    FadeColor(IM_COL32(255, 255, 255, 255), g_globalAlpha),
+        //    name
+        //);
     }
 
     void DrawInventoryRadialMenu()
@@ -22305,6 +22568,7 @@ namespace Menu
         // HITBOXES
         // ============================================================
 
+        ++g_settingsHitboxGeneration;
         g_settingsItemHitboxes.clear();
 
         // ============================================================
