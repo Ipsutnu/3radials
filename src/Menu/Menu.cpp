@@ -12575,10 +12575,7 @@ namespace Menu
 
         ImGuiIO& io = ImGui::GetIO();
 
-        if (g_hasLastInventoryRadialPosition)
-            g_inventoryDraggedPosition = g_lastInventoryRadialPosition;
-        else
-            g_inventoryDraggedPosition = GetSkyrimMousePos();
+        g_inventoryDraggedPosition = GetSkyrimMousePos();
 
         //POINT pt{};
         //GetCursorPos(&pt);
@@ -12806,16 +12803,7 @@ namespace Menu
         g_inventoryItemJustGrabbed = true;
         g_inventoryOverflowMorphActive = true;
 
-        if (g_hasLastInventoryRadialPosition)
-        {
-            g_inventoryDraggedPosition =
-                g_lastInventoryRadialPosition;
-        }
-        else
-        {
-            g_inventoryDraggedPosition =
-                GetSkyrimMousePos();
-        }
+        g_inventoryDraggedPosition = GetSkyrimMousePos();
 
         // ============================================================
         // 7. ABRE O RADIAL
@@ -16992,6 +16980,14 @@ namespace Menu
             g_globalAlpha
         );
 
+        // O item arrastado também precisa passar pelo mesmo resolvedor de
+        // cores dos slots do radial. Assim, poções, escolas de magia e
+        // encantamentos mantêm a sua cor configurada durante o drag.
+        RadialItem draggedItem{};
+        draggedItem.form = g_draggedInventoryItem;
+        draggedItem.uniqueID = g_draggedInventoryUniqueID;
+        draggedItem.hasUniqueID = g_draggedInventoryHasUniqueID;
+
         if (g_draggedInventoryItem)
         {
             auto* icon =
@@ -17019,8 +17015,14 @@ namespace Menu
                     ImVec2(0.0f, 0.0f),
                     ImVec2(1.0f, 1.0f),
                     FadeColor(
-                        IM_COL32(255, 255, 255, 180),
-                        225
+                        MakeGameplayIconColor(
+                            draggedItem,
+                            255,
+                            1.0f,
+                            true,
+                            RadialSide::Left
+                        ),
+                        g_globalAlpha
                     )
                 );
             }
@@ -17033,16 +17035,6 @@ namespace Menu
         // ============================================================
         // IDENTIFICA A INSTÂNCIA ARRASTADA
         // ============================================================
-
-        RadialItem draggedItem{};
-
-        draggedItem.form = g_draggedInventoryItem;
-
-        draggedItem.uniqueID =
-            g_draggedInventoryUniqueID;
-
-        draggedItem.hasUniqueID =
-            g_draggedInventoryHasUniqueID;
 
         // ============================================================
         // OBTÉM O NOME DA INSTÂNCIA

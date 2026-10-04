@@ -714,24 +714,19 @@ RE::BSEventNotifyControl InputHandler::ProcessEvent(
                 continue;
             }
 
-            // Mouse events arrive in real pixels; all WheelWheel interaction
-            // state is kept in the virtual 1920x1080 coordinate space.
-            const ImVec2 virtualDelta = Resolution::ToVirtualDelta(ImVec2(
-                static_cast<float>(mouseMove->mouseInputX),
-                static_cast<float>(mouseMove->mouseInputY)));
-            const float deltaX = virtualDelta.x;
-            const float deltaY = virtualDelta.y;
-
             // ========================================================
             // INVENTÁRIO
             // ========================================================
 
             if (g_radialMode == RadialMode::Inventory &&
-                g_inventoryDragMode == InventoryDragMode::KeyDrag &&
-                !g_inventoryItemJustGrabbed)
+                g_inventoryDragMode == InventoryDragMode::KeyDrag)
             {
-                g_inventoryDraggedPosition.x += deltaX;
-                g_inventoryDraggedPosition.y += deltaY;
+                // O item acompanha a coordenada absoluta do cursor Scaleform
+                // em vez de acumular deltas de mouse. O evento segue intacto
+                // para o Skyrim, portanto o cursor do inventário permanece
+                // livre durante o drag.
+                g_inventoryDraggedPosition = Menu::GetSkyrimMousePos();
+                continue;
             }
 
             // ========================================================
