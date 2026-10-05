@@ -20115,24 +20115,29 @@ namespace Menu
             const float previewDx = g_settingsMousePos.x - g_gameplayPreviewButtonCenter.x;
             const float previewDy = g_settingsMousePos.y - g_gameplayPreviewButtonCenter.y;
             const float previewRadius = g_gameplayPreviewButtonRadius + 3.0f;
+        
             if (previewDx * previewDx + previewDy * previewDy <= previewRadius * previewRadius)
             {
                 Config::g_showItemPreviewGameplay = !Config::g_showItemPreviewGameplay;
                 Config::SaveConfig();
                 return true;
             }
+        
             const float infoDx = g_settingsMousePos.x - g_gameplayDescriptionButtonCenter.x;
             const float infoDy = g_settingsMousePos.y - g_gameplayDescriptionButtonCenter.y;
             const float infoRadius = g_gameplayDescriptionButtonRadius + 3.0f;
+        
             if (infoDx * infoDx + infoDy * infoDy <= infoRadius * infoRadius)
             {
                 Config::g_showGameplayDescription = !Config::g_showGameplayDescription;
                 Config::SaveConfig();
                 return true;
             }
+        
             const float quantityDx = g_settingsMousePos.x - g_showItemQuantityButtonCenter.x;
             const float quantityDy = g_settingsMousePos.y - g_showItemQuantityButtonCenter.y;
             const float quantityRadius = g_showItemQuantityButtonRadius + 3.0f;
+        
             if (quantityDx * quantityDx + quantityDy * quantityDy <=
                 quantityRadius * quantityRadius)
             {
@@ -20143,6 +20148,7 @@ namespace Menu
             const float overflowIconDx = g_settingsMousePos.x - g_showOverflowIconButtonCenter.x;
             const float overflowIconDy = g_settingsMousePos.y - g_showOverflowIconButtonCenter.y;
             const float overflowIconRadius = g_showOverflowIconButtonRadius + 3.0f;
+        
             if (overflowIconDx * overflowIconDx + overflowIconDy * overflowIconDy <=
                 overflowIconRadius * overflowIconRadius)
             {
@@ -20150,9 +20156,11 @@ namespace Menu
                 Config::SaveConfig();
                 return true;
             }
+        
             const float stardustDx = g_settingsMousePos.x - g_stardustButtonCenter.x;
             const float stardustDy = g_settingsMousePos.y - g_stardustButtonCenter.y;
             const float stardustRadius = g_stardustButtonRadius + 3.0f;
+        
             if (stardustDx * stardustDx + stardustDy * stardustDy <=
                 stardustRadius * stardustRadius)
             {
@@ -20191,22 +20199,28 @@ namespace Menu
         {
             for (const auto& option : g_languageOptionHitboxes)
             {
+        
                 if (!insideRect(option.min, option.max))
                     continue;
-                if (Language::SetCurrent(option.language))
+        
+                    if (Language::SetCurrent(option.language))
                 {
                     Config::g_language = Language::GetCurrentName();
                     Config::SaveConfig();
                 }
+        
                 g_languageListOpen = false;
+        
                 return true;
             }
         }
 
         if (insideRect(g_languageButtonMin, g_languageButtonMax))
         {
+        
             Language::RefreshAvailableLanguages();
             g_languageListOpen = !g_languageListOpen;
+        
             return true;
         }
 
@@ -20217,9 +20231,11 @@ namespace Menu
         };
         for (std::size_t i = 0; i < blurScopes.size(); ++i)
         {
+        
             const float dx = g_settingsMousePos.x - g_blurScopeCenters[i].x;
             const float dy = g_settingsMousePos.y - g_blurScopeCenters[i].y;
             const float radius = g_blurScopeRadius + 3.0f;
+        
             if (dx * dx + dy * dy <= radius * radius)
             {
                 *blurScopes[i] = !*blurScopes[i];
@@ -20231,6 +20247,7 @@ namespace Menu
         const float slowDx = g_settingsMousePos.x - g_slowTimeButtonCenter.x;
         const float slowDy = g_settingsMousePos.y - g_slowTimeButtonCenter.y;
         const float slowRadius = g_slowTimeButtonRadius + 3.0f;
+        
         if (slowDx * slowDx + slowDy * slowDy <= slowRadius * slowRadius)
         {
             Config::g_slowTimeDuringRadialSelection =
@@ -20240,19 +20257,24 @@ namespace Menu
             Config::SaveConfig();
             return true;
         }
+        
         if (Config::g_slowTimeDuringRadialSelection &&
             insideRect(g_slowTimeSliderMin, g_slowTimeSliderMax))
         {
             g_slowTimeSliderDragging = true;
             return true;
         }
+        
         if (Config::g_slowTimeDuringRadialSelection &&
             insideRect(g_slowTimeResetHitbox.min, g_slowTimeResetHitbox.max))
         {
+        
             Config::g_slowTimeMultiplier = 0.15f;
             Config::SaveConfig();
+        
             return true;
         }
+        
         if (Config::g_slowTimeDuringRadialSelection)
         {
             std::array<bool*, 3> scopes{
@@ -20262,9 +20284,11 @@ namespace Menu
             };
             for (std::size_t i = 0; i < scopes.size(); ++i)
             {
+        
                 const float dx = g_settingsMousePos.x - g_slowTimeScopeCenters[i].x;
                 const float dy = g_settingsMousePos.y - g_slowTimeScopeCenters[i].y;
                 const float radius = g_slowTimeScopeRadius + 3.0f;
+        
                 if (dx * dx + dy * dy <= radius * radius)
                 {
                     *scopes[i] = !*scopes[i];
@@ -20275,27 +20299,39 @@ namespace Menu
         }
 
         const float fastDragDx = g_settingsMousePos.x - g_fastDragButtonCenter.x;
+        
         const float fastDragDy = g_settingsMousePos.y - g_fastDragButtonCenter.y;
+        
         const float fastDragRadius = g_fastDragButtonRadius + 3.0f;
+        
         if (fastDragDx * fastDragDx + fastDragDy * fastDragDy <=
             fastDragRadius * fastDragRadius)
         {
+        
             Config::g_fastInventoryDrag = !Config::g_fastInventoryDrag;
             Config::SaveConfig();
+        
             return true;
         }
 
+
+
         const bool customIconsAvailable = IconCustom::HasValidConfiguration();
+        
         const float reloadDx = g_settingsMousePos.x - g_customIconsReloadCenter.x;
         const float reloadDy = g_settingsMousePos.y - g_customIconsReloadCenter.y;
         const float reloadRadius = g_customIconsReloadRadius + 3.0f;
+    
         if (customIconsAvailable && reloadDx * reloadDx + reloadDy * reloadDy <=
             reloadRadius * reloadRadius)
         {
+    
             const bool stillValid = IconCustom::Reload();
+    
             if (!stillValid)
                 Config::SetCustomIconsPreference(false);
             Config::SaveConfig();
+    
             return true;
         }
 
@@ -20305,20 +20341,25 @@ namespace Menu
             &Config::g_coloredMagicSchools,
             &Config::g_coloredItemEnchants
         };
+    
         for (std::size_t i = 0; i < iconSettings.size(); ++i)
         {
             if (i == 0 && !customIconsAvailable)
                 continue;
+    
             const float iconDx = g_settingsMousePos.x - g_gameplayIconButtonCenters[i].x;
             const float iconDy = g_settingsMousePos.y - g_gameplayIconButtonCenters[i].y;
             const float radius = g_gameplayIconButtonRadius + 3.0f;
+    
             if (iconDx * iconDx + iconDy * iconDy <= radius * radius)
             {
+    
                 if (i == 0)
                     Config::SetCustomIconsPreference(!Config::g_customIcons);
                 else
                     *iconSettings[i] = !*iconSettings[i];
                 Config::SaveConfig();
+    
                 return true;
             }
         }
@@ -20326,6 +20367,7 @@ namespace Menu
         g_languageListOpen = false;
         g_radialShapeListOpen = false;
         g_radialAnimationListOpen = false;
+    
         return false;
     }
 
@@ -20364,15 +20406,21 @@ namespace Menu
             (std::clamp(Config::g_fontSizeScale, 1.0f, 2.5f) - 1.0f) * (2.0f / 3.0f);
 
         const float panelHeaderY = panel.min.y + padding;
+    
         const float contentTop = panelHeaderY + 29.0f * controlScale;
+    
         const float contentBottom =
             GetSettingsPanelContentBottom(panel, padding);
+    
         const float y = panelHeaderY - g_settingsPanelScroll;
+    
         const float scrollbarX = panel.max.x + 6.0f * controlScale;
+    
         g_settingsScrollbarHitbox.min = ImVec2(
             scrollbarX - 8.0f * controlScale, contentTop);
         g_settingsScrollbarHitbox.max = ImVec2(
             scrollbarX + 8.0f * controlScale, contentBottom);
+    
         if (g_settingsScrollbarDragging && g_settingsPanelMaxScroll > 0.0f)
         {
             const float normalized = std::clamp(
@@ -20381,6 +20429,7 @@ namespace Menu
                 0.0f, 1.0f);
             g_settingsPanelScroll = normalized * g_settingsPanelMaxScroll;
         }
+    
         draw->PushClipRect(
             ImVec2(panel.min.x, contentTop),
             ImVec2(panel.max.x, contentBottom), true);
@@ -20557,53 +20606,73 @@ namespace Menu
         );
 
         const float secondLabelY = g_wheelKeyButtonMax.y + 13.0f * controlScale;
+    
         const char* secondKeyLabel = Language::Get("second_key").c_str();
+    
         const ImVec2 secondKeyLabelSize = ImGui::CalcTextSize(secondKeyLabel);
+    
         DrawTextWithShadow(draw,
             ImVec2(x + (availableWidth - secondKeyLabelSize.x) * 0.5f, secondLabelY),
             white, secondKeyLabel, alpha);
 
         const float secondButtonY = secondLabelY + 27.0f * controlScale;
         const float secondaryResetArea = 28.0f * controlScale;
+    
         g_secondaryKeyButtonMin = ImVec2(x, secondButtonY);
+    
         g_secondaryKeyButtonMax = ImVec2(
             x + availableWidth - secondaryResetArea, secondButtonY + buttonHeight);
+    
         const ImVec2 secondaryResetCenter(
             x + availableWidth - 7.0f * controlScale,
             secondButtonY + buttonHeight * 0.5f);
+    
         g_secondaryKeyResetHitbox.min = ImVec2(
             secondaryResetCenter.x - 10.0f * controlScale,
             secondaryResetCenter.y - 10.0f * controlScale);
+    
         g_secondaryKeyResetHitbox.max = ImVec2(
             secondaryResetCenter.x + 10.0f * controlScale,
             secondaryResetCenter.y + 10.0f * controlScale);
+    
         const bool secondaryHovered =
             mouse.x >= g_secondaryKeyButtonMin.x && mouse.x <= g_secondaryKeyButtonMax.x &&
             mouse.y >= g_secondaryKeyButtonMin.y && mouse.y <= g_secondaryKeyButtonMax.y;
+    
         const bool waitingSecondary = g_waitingWheelKey && g_waitingWheelKeySlot == 2;
+    
         draw->AddRectFilled(g_secondaryKeyButtonMin, g_secondaryKeyButtonMax,
             FadeColor(waitingSecondary ? IM_COL32(85, 75, 55, 215) :
                 secondaryHovered ? IM_COL32(65, 65, 70, 235) : IM_COL32(20, 20, 25, 235), alpha), 5.0f);
+    
         draw->AddRect(g_secondaryKeyButtonMin, g_secondaryKeyButtonMax,
             FadeColor(waitingSecondary ? IM_COL32(215, 195, 150, 235) :
                 IM_COL32(255, 255, 255, secondaryHovered ? 190 : 85), alpha), 5.0f, 0, 1.5f);
+    
         const std::string secondButtonText = waitingSecondary
             ? Language::Get("waiting_key")
             : Config::g_secondaryKey != 0
                 ? Config::KeyToString(Config::g_secondaryKey)
                 : Language::Get("none");
+    
         const ImVec2 secondTextSize = ImGui::CalcTextSize(secondButtonText.c_str());
+    
         DrawTextWithShadow(draw,
             ImVec2((g_secondaryKeyButtonMin.x + g_secondaryKeyButtonMax.x - secondTextSize.x) * 0.5f,
                 (g_secondaryKeyButtonMin.y + g_secondaryKeyButtonMax.y - secondTextSize.y) * 0.5f),
             waitingSecondary ? gold : white, secondButtonText.c_str(), alpha);
+    
         const bool secondaryResetHovered =
             mouse.x >= g_secondaryKeyResetHitbox.min.x &&
             mouse.x <= g_secondaryKeyResetHitbox.max.x &&
             mouse.y >= g_secondaryKeyResetHitbox.min.y &&
             mouse.y <= g_secondaryKeyResetHitbox.max.y;
+    
         const int secondaryResetShade = secondaryResetHovered ? 245 : 65;
+    
+    
         generalSliderResetTooltip = generalSliderResetTooltip || secondaryResetHovered;
+        
         draw->AddCircleFilled(secondaryResetCenter, 5.0f * controlScale,
             FadeColor(IM_COL32(secondaryResetShade, secondaryResetShade,
                 secondaryResetShade, 255), alpha), 20);
@@ -20612,43 +20681,64 @@ namespace Menu
             20, 1.0f);
 
         const float altLabelY = g_secondaryKeyButtonMax.y + 13.0f * controlScale;
+        
         const char* altConfigLabel = Language::Get("alt_config_key").c_str();
+        
         const ImVec2 altConfigLabelSize = ImGui::CalcTextSize(altConfigLabel);
+        
         DrawTextWithShadow(draw,
             ImVec2(x + (availableWidth - altConfigLabelSize.x) * 0.5f, altLabelY),
             white, altConfigLabel, alpha);
+        
         const float altButtonY = altLabelY + 27.0f * controlScale;
+        
         g_altConfigKeyButtonMin = ImVec2(x, altButtonY);
         g_altConfigKeyButtonMax = ImVec2(x + availableWidth - secondaryResetArea,
             altButtonY + buttonHeight);
+        
         const ImVec2 altResetCenter(x + availableWidth - 7.0f * controlScale,
             altButtonY + buttonHeight * 0.5f);
+        
         g_altConfigKeyResetHitbox.min = ImVec2(altResetCenter.x - 10.0f * controlScale,
             altResetCenter.y - 10.0f * controlScale);
         g_altConfigKeyResetHitbox.max = ImVec2(altResetCenter.x + 10.0f * controlScale,
             altResetCenter.y + 10.0f * controlScale);
+        
         const bool altHovered = mouse.x >= g_altConfigKeyButtonMin.x &&
             mouse.x <= g_altConfigKeyButtonMax.x && mouse.y >= g_altConfigKeyButtonMin.y &&
             mouse.y <= g_altConfigKeyButtonMax.y;
+        
         const bool waitingAlt = g_waitingWheelKey && g_waitingWheelKeySlot == 3;
+        
         draw->AddRectFilled(g_altConfigKeyButtonMin, g_altConfigKeyButtonMax,
             FadeColor(waitingAlt ? IM_COL32(85, 75, 55, 215) :
                 altHovered ? IM_COL32(65, 65, 70, 235) : IM_COL32(20, 20, 25, 235), alpha), 5.0f);
+        
         draw->AddRect(g_altConfigKeyButtonMin, g_altConfigKeyButtonMax,
             FadeColor(waitingAlt ? IM_COL32(215, 195, 150, 235) :
                 IM_COL32(255, 255, 255, altHovered ? 190 : 85), alpha), 5.0f, 0, 1.5f);
+        
         const std::string altButtonText = waitingAlt ? Language::Get("waiting_key") :
             (Config::g_altConfigKey != 0 ? Config::KeyToString(Config::g_altConfigKey) : Language::Get("none"));
+        
         const ImVec2 altTextSize = ImGui::CalcTextSize(altButtonText.c_str());
+        
         DrawTextWithShadow(draw, ImVec2((g_altConfigKeyButtonMin.x + g_altConfigKeyButtonMax.x - altTextSize.x) * 0.5f,
             (g_altConfigKeyButtonMin.y + g_altConfigKeyButtonMax.y - altTextSize.y) * 0.5f),
             waitingAlt ? gold : white, altButtonText.c_str(), alpha);
+        
         const bool altResetHovered = mouse.x >= g_altConfigKeyResetHitbox.min.x &&
             mouse.x <= g_altConfigKeyResetHitbox.max.x && mouse.y >= g_altConfigKeyResetHitbox.min.y &&
             mouse.y <= g_altConfigKeyResetHitbox.max.y;
+        
         generalSliderResetTooltip = generalSliderResetTooltip || altResetHovered;
+        
+        
         const int altResetShade = altResetHovered ? 245 : 65;
+        
         generalSliderResetTooltip = generalSliderResetTooltip || altResetHovered;
+        
+        
         draw->AddCircleFilled(altResetCenter, 5.0f * controlScale,
             FadeColor(IM_COL32(altResetShade, altResetShade, altResetShade, 255), alpha), 20);
         draw->AddCircle(altResetCenter, 6.5f * controlScale,
@@ -20656,19 +20746,27 @@ namespace Menu
 
         const float automaticOptionY =
             g_altConfigKeyButtonMax.y + 25.0f * controlScale;
-        g_automaticArrowButtonRadius = 10.0f * controlScale;
+        
+        g_automaticArrowButtonRadius = 10.0f * controlScale;    
         g_automaticArrowButtonCenter = ImVec2(x + g_automaticArrowButtonRadius, automaticOptionY);
+    
         const float autoDx = mouse.x - g_automaticArrowButtonCenter.x;
+    
         const float autoDy = mouse.y - g_automaticArrowButtonCenter.y;
+    
         const bool automaticHovered = autoDx * autoDx + autoDy * autoDy <=
             g_automaticArrowButtonRadius * g_automaticArrowButtonRadius;
+    
         const ImU32 automaticBackground = Config::g_automaticArrowMenus
             ? IM_COL32(235, 235, 235, 140) : IM_COL32(20, 20, 25, 235);
+        
         draw->AddCircleFilled(g_automaticArrowButtonCenter,
             g_automaticArrowButtonRadius, FadeColor(automaticBackground, alpha), 40);
+        
         draw->AddCircle(g_automaticArrowButtonCenter,
             g_automaticArrowButtonRadius + (automaticHovered ? 2.0f : 0.0f),
             FadeColor(IM_COL32(255, 255, 255, automaticHovered ? 210 : 100), alpha), 40, 1.5f);
+        
         DrawTextWithShadow(draw,
             ImVec2(g_automaticArrowButtonCenter.x + g_automaticArrowButtonRadius + 12.0f,
                 automaticOptionY - ImGui::GetFontSize() * 0.5f),
@@ -20691,29 +20789,46 @@ namespace Menu
         };
 
         const float rowHeight = std::max(48.0f * controlScale, ImGui::GetFontSize() + 27.0f * controlScale);
+        
         const float trackHeight = 13.0f * controlScale;
+        
         const float resetAreaWidth = 24.0f * controlScale;
+        
         const float trackWidth = availableWidth - resetAreaWidth;
+        
         const float slidersTop = automaticOptionY + 34.0f * controlScale;
+        
         for (std::size_t i = 0; i < std::size(sliders); ++i)
         {
+        
             const float rowY = slidersTop + rowHeight * static_cast<float>(i);
+        
             const float trackY = rowY + ImGui::GetFontSize() + 9.0f * controlScale;
+        
             auto& hitbox = g_generalSliderHitboxes[i];
+        
             hitbox.min = ImVec2(x, trackY - trackHeight * 0.5f - 4.0f * controlScale);
+        
             hitbox.max = ImVec2(x + trackWidth, trackY + trackHeight * 0.5f + 4.0f * controlScale);
+        
             const ImVec2 resetCenter(x + availableWidth - 6.0f * controlScale, trackY);
+        
             auto& resetHitbox = g_generalResetHitboxes[i];
+        
             resetHitbox.min = ImVec2(resetCenter.x - 10.0f * controlScale, resetCenter.y - 10.0f * controlScale);
+        
             resetHitbox.max = ImVec2(resetCenter.x + 10.0f * controlScale, resetCenter.y + 10.0f * controlScale);
 
             if (g_activeGeneralSlider == static_cast<GeneralSlider>(i))
             {
                 const float normalized = std::clamp(
                     (g_settingsMousePos.x - x) / std::max(trackWidth, 1.0f), 0.0f, 1.0f);
+        
                 *sliders[i].value = sliders[i].minimum +
                     (sliders[i].maximum - sliders[i].minimum) * normalized;
+        
                 std::size_t changedPreviewCategory = 0;
+        
                 if (GetPreviewCategorySliderInfo(
                         static_cast<LayoutSlider>(i), changedPreviewCategory))
                     ItemPreview::InvalidateSizeScale();
@@ -20722,63 +20837,85 @@ namespace Menu
             const bool sliderHovered =
                 g_settingsMousePos.x >= hitbox.min.x && g_settingsMousePos.x <= hitbox.max.x &&
                 g_settingsMousePos.y >= hitbox.min.y && g_settingsMousePos.y <= hitbox.max.y;
+        
             const float normalized = std::clamp(
                 (*sliders[i].value - sliders[i].minimum) /
                     std::max(sliders[i].maximum - sliders[i].minimum, 0.001f), 0.0f, 1.0f);
+        
             const float fillX = x + trackWidth * normalized;
 
+        
             DrawTextWithShadow(draw, ImVec2(x, rowY), white, sliders[i].label, alpha);
+        
             const std::string sliderValue = std::vformat(sliders[i].format,
                 std::make_format_args(*sliders[i].value));
+        
             const ImVec2 sliderValueSize = ImGui::CalcTextSize(sliderValue.c_str());
+        
             DrawTextWithShadow(draw, ImVec2(x + availableWidth - sliderValueSize.x, rowY),
                 FadeColor(IM_COL32(180, 165, 130, 230), alpha), sliderValue.c_str(), alpha);
 
             draw->AddRectFilled(ImVec2(x, trackY - trackHeight * 0.5f),
                 ImVec2(x + trackWidth, trackY + trackHeight * 0.5f),
                 FadeColor(IM_COL32(28, 29, 34, 235), alpha), 4.0f);
+        
             draw->AddRectFilled(ImVec2(x, trackY - trackHeight * 0.5f),
                 ImVec2(fillX, trackY + trackHeight * 0.5f),
                 FadeColor(sliderHovered ? IM_COL32(235, 230, 215, 225) : IM_COL32(190, 184, 170, 205), alpha),
                 4.0f);
+        
             draw->AddRect(ImVec2(x, trackY - trackHeight * 0.5f),
                 ImVec2(x + trackWidth, trackY + trackHeight * 0.5f),
                 FadeColor(IM_COL32(115, 112, 106, sliderHovered ? 210 : 135), alpha), 4.0f, 0, 1.0f);
+        
             const bool resetHovered =
                 g_settingsMousePos.x >= resetHitbox.min.x && g_settingsMousePos.x <= resetHitbox.max.x &&
                 g_settingsMousePos.y >= resetHitbox.min.y && g_settingsMousePos.y <= resetHitbox.max.y;
             generalSliderResetTooltip = generalSliderResetTooltip || resetHovered;
+        
             const int resetShade = resetHovered ? 235 : 60;
+        
             draw->AddCircleFilled(resetCenter, 5.0f * controlScale,
                 FadeColor(IM_COL32(resetShade, resetShade, resetShade, 255), alpha), 20);
+        
             draw->AddCircle(resetCenter, 6.5f * controlScale,
                 FadeColor(IM_COL32(120, 120, 120, resetHovered ? 220 : 110), alpha), 20, 1.0f);
         }
 
+        
         const float resetSeparatorY = slidersTop +
             rowHeight * static_cast<float>(std::size(sliders)) + 8.0f * controlScale;
+        
         draw->AddLine(ImVec2(x, resetSeparatorY), ImVec2(x + availableWidth, resetSeparatorY),
             FadeColor(IM_COL32(215, 195, 150, 90), alpha), 1.0f);
+        
         const float resetAllRadius = 8.0f * controlScale;
+        
         const ImVec2 resetAllCenter(
             x + availableWidth * 0.5f,
             resetSeparatorY + 28.0f * controlScale);
+        
         g_resetAllConfigHitbox.min = ImVec2(resetAllCenter.x - 13.0f * controlScale,
             resetAllCenter.y - 13.0f * controlScale);
         g_resetAllConfigHitbox.max = ImVec2(resetAllCenter.x + 13.0f * controlScale,
             resetAllCenter.y + 13.0f * controlScale);
+        
         const bool resetAllHovered =
             mouse.x >= g_resetAllConfigHitbox.min.x && mouse.x <= g_resetAllConfigHitbox.max.x &&
             mouse.y >= g_resetAllConfigHitbox.min.y && mouse.y <= g_resetAllConfigHitbox.max.y;
+        
         const int resetAllShade = resetAllHovered ? 245 : 65;
+        
         draw->AddCircleFilled(resetAllCenter, resetAllRadius,
             FadeColor(IM_COL32(resetAllShade, resetAllShade, resetAllShade, 255), alpha), 24);
         draw->AddCircle(resetAllCenter, resetAllRadius + 2.0f * controlScale,
             FadeColor(IM_COL32(145, 145, 145, resetAllHovered ? 230 : 120), alpha), 24, 1.2f);
         if (resetAllHovered)
         {
+        
             const std::string& resetLabel = Language::Get("reset_all_configuration");
             const ImVec2 resetLabelSize = ImGui::CalcTextSize(resetLabel.c_str());
+        
             DrawTextWithShadow(draw,
                 ImVec2(resetAllCenter.x - resetLabelSize.x * 0.5f,
                     resetAllCenter.y + resetAllRadius + 10.0f * controlScale),
@@ -20787,34 +20924,45 @@ namespace Menu
 
         draw->PopClipRect();
 
+        
         const float totalContentHeight =
             resetAllCenter.y + resetAllRadius + 55.0f * controlScale +
             g_settingsPanelScroll - contentTop;
+        
         const float visibleContentHeight = std::max(
             contentBottom - contentTop, 1.0f);
+        
         g_settingsPanelMaxScroll = std::max(
             0.0f, totalContentHeight - visibleContentHeight);
+        
         g_settingsPanelScroll = std::clamp(
             g_settingsPanelScroll, 0.0f, g_settingsPanelMaxScroll);
 
+        
         draw->AddRectFilled(
             ImVec2(scrollbarX - 2.0f * controlScale, contentTop),
             ImVec2(scrollbarX + 2.0f * controlScale, contentBottom),
             FadeColor(IM_COL32(30, 31, 36, 220), alpha), 3.0f * controlScale);
+        
         const float thumbHeight = std::max(
             22.0f * controlScale,
             visibleContentHeight * std::clamp(
                 visibleContentHeight / std::max(totalContentHeight, 1.0f),
                 0.0f, 1.0f));
+        
         const float thumbTravel = std::max(
             0.0f, visibleContentHeight - thumbHeight);
+        
         const float scrollT = g_settingsPanelMaxScroll > 0.0f
             ? g_settingsPanelScroll / g_settingsPanelMaxScroll : 0.0f;
+        
         const bool scrollbarHovered =
             g_settingsMousePos.x >= g_settingsScrollbarHitbox.min.x &&
             g_settingsMousePos.x <= g_settingsScrollbarHitbox.max.x &&
             g_settingsMousePos.y >= g_settingsScrollbarHitbox.min.y &&
             g_settingsMousePos.y <= g_settingsScrollbarHitbox.max.y;
+        
+        
         draw->AddRectFilled(
             ImVec2(scrollbarX - 4.0f * controlScale,
                 contentTop + thumbTravel * scrollT),
@@ -20827,24 +20975,32 @@ namespace Menu
 
         if (generalSliderResetTooltip)
         {
+        
             const char* tooltip = Language::Get("reset_value").c_str();
             const ImVec2 textSize = ImGui::CalcTextSize(tooltip);
             const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
             const float tooltipPadding = 7.0f * controlScale;
+        
             ImVec2 tooltipMin(
                 g_settingsMousePos.x + 14.0f * controlScale,
                 g_settingsMousePos.y + 14.0f * controlScale);
+        
             tooltipMin.x = std::clamp(tooltipMin.x, 4.0f,
                 std::max(4.0f, displaySize.x - textSize.x - tooltipPadding * 2.0f - 4.0f));
+        
             tooltipMin.y = std::clamp(tooltipMin.y, 4.0f,
                 std::max(4.0f, displaySize.y - textSize.y - tooltipPadding * 2.0f - 4.0f));
+        
             const ImVec2 tooltipMax(
                 tooltipMin.x + textSize.x + tooltipPadding * 2.0f,
                 tooltipMin.y + textSize.y + tooltipPadding * 2.0f);
+        
             draw->AddRectFilled(tooltipMin, tooltipMax,
                 FadeColor(IM_COL32(13, 14, 18, 245), alpha), 4.0f * controlScale);
+        
             draw->AddRect(tooltipMin, tooltipMax,
                 FadeColor(IM_COL32(180, 176, 165, 180), alpha), 4.0f * controlScale);
+        
             DrawTextWithShadow(draw,
                 ImVec2(tooltipMin.x + tooltipPadding,
                     tooltipMin.y + tooltipPadding),
@@ -20919,13 +21075,17 @@ namespace Menu
         );
 
         const float gameplayContentTop = y + 40.0f * controlScale;
+        
         const float gameplayContentBottom =
             GetSettingsPanelContentBottom(panel, padding);
+        
         const float gameplayScrollbarX = panel.max.x + 6.0f * controlScale;
+        
         g_gameplayScrollbarHitbox.min = ImVec2(
             gameplayScrollbarX - 8.0f * controlScale, gameplayContentTop);
         g_gameplayScrollbarHitbox.max = ImVec2(
             gameplayScrollbarX + 8.0f * controlScale, gameplayContentBottom);
+        
         if (g_gameplayScrollbarDragging && g_gameplayPanelMaxScroll > 0.0f)
         {
             const float normalized = std::clamp(
@@ -20934,32 +21094,44 @@ namespace Menu
                 0.0f, 1.0f);
             g_gameplayPanelScroll = normalized * g_gameplayPanelMaxScroll;
         }
+        
         draw->PushClipRect(ImVec2(panel.min.x, gameplayContentTop),
             ImVec2(panel.max.x, gameplayContentBottom), true);
 
+        
         const float buttonRadius = 12.0f * controlScale;
+        
         const ImU32 gold = FadeColor(IM_COL32(215, 195, 150, 255), alpha);
+        
         const ImU32 white = FadeColor(IM_COL32(235, 230, 215, 255), alpha);
 
         // Gameplay layout: Language -> Animation -> Menu.
         // Keep the controls themselves untouched; only their vertical flow changes.
+        
         const float languageY = y + 45.0f * controlScale - g_gameplayPanelScroll;
+        
         const float languageButtonHeight = std::max(
             34.0f * controlScale, ImGui::GetFontSize() + 14.0f);
+        
         const float animationTitleY =
             languageY + languageButtonHeight + 26.0f * controlScale;
         // The three Animation controls occupy a fixed vertical sequence.  This
         // mirrors drawSelector's spacing so MENU begins after that sequence,
         // without changing any selector behavior or hitbox.
+        
         const float animationContentBottomY = animationTitleY +
             251.0f * controlScale + 2.0f * ImGui::GetFontSize();
 
         // MENU -------------------------------------------------------
+        
         const float menuTitleY = animationContentBottomY + 16.0f * controlScale;
+        
         DrawTextWithShadow(draw, ImVec2(x, menuTitleY), gold,
             Language::Get("menu_section").c_str(), alpha);
+        
         const ImVec2 menuTitleSize = ImGui::CalcTextSize(
             Language::Get("menu_section").c_str());
+        
         draw->AddLine(
             ImVec2(x + menuTitleSize.x + 12.0f * controlScale,
                 menuTitleY + ImGui::GetFontSize() * 0.5f),
@@ -20967,34 +21139,49 @@ namespace Menu
             FadeColor(IM_COL32(215, 195, 150, 90), alpha), 1.0f);
 
         const float blurTitleY = menuTitleY + 31.0f * controlScale;
+        
         const char* blurTitle = Language::Get("blur").c_str();
+        
         const ImVec2 blurTitleSize = ImGui::CalcTextSize(blurTitle);
+        
         DrawTextWithShadow(draw,
             ImVec2(x + (width - blurTitleSize.x) * 0.5f, blurTitleY),
             white, blurTitle, alpha);
+        
         const float blurScopeY = blurTitleY + 25.0f * controlScale;
+        
         g_blurScopeRadius = buttonRadius * 0.5f;
+        
         const float blurScopeSpacing = 20.0f * controlScale;
+        
         const float blurScopeStartX = x + width * 0.5f - blurScopeSpacing;
+        
         const std::array<bool, 3> blurScopeValues{
             Config::g_blurTop, Config::g_blurCentral, Config::g_blurBottom
         };
+        
         const std::array<const char*, 3> blurScopeLabels{
             "slow_time_top", "slow_time_left_right", "slow_time_bottom"
         };
+        
         const char* blurScopeTooltip = nullptr;
+        
         for (std::size_t i = 0; i < g_blurScopeCenters.size(); ++i)
         {
             const ImVec2 center(
                 blurScopeStartX + blurScopeSpacing * static_cast<float>(i),
                 blurScopeY);
+        
             g_blurScopeCenters[i] = center;
+        
             const float dx = g_settingsMousePos.x - center.x;
             const float dy = g_settingsMousePos.y - center.y;
             const bool hovered = dx * dx + dy * dy <=
                 g_blurScopeRadius * g_blurScopeRadius;
+        
             if (hovered)
                 blurScopeTooltip = Language::Get(blurScopeLabels[i]).c_str();
+        
             draw->AddCircleFilled(center, g_blurScopeRadius,
                 FadeColor(blurScopeValues[i]
                     ? IM_COL32(235, 235, 235, 150)
@@ -21006,12 +21193,15 @@ namespace Menu
         }
 
         const float slowOptionY = blurScopeY + 34.0f * controlScale;
+        
         g_slowTimeButtonRadius = buttonRadius;
         g_slowTimeButtonCenter = ImVec2(x + 13.0f * controlScale, slowOptionY);
+        
         const float slowDx = g_settingsMousePos.x - g_slowTimeButtonCenter.x;
         const float slowDy = g_settingsMousePos.y - g_slowTimeButtonCenter.y;
         const bool slowHovered = slowDx * slowDx + slowDy * slowDy <=
             buttonRadius * buttonRadius;
+        
         draw->AddCircleFilled(g_slowTimeButtonCenter, buttonRadius,
             FadeColor(Config::g_slowTimeDuringRadialSelection
                 ? IM_COL32(235, 235, 235, 140)
@@ -21020,37 +21210,49 @@ namespace Menu
             buttonRadius + (slowHovered ? 2.0f : 0.0f),
             FadeColor(IM_COL32(255, 255, 255, slowHovered ? 210 : 100), alpha),
             48, 1.5f);
+        
         DrawTextWithShadow(draw,
             ImVec2(g_slowTimeButtonCenter.x + buttonRadius + 12.0f,
                 slowOptionY - ImGui::GetFontSize() * 0.5f),
             white, Language::Get("slow_time_during_radial_selection").c_str(), alpha);
 
         const float scopeY = slowOptionY + 29.0f * controlScale;
+        
         g_slowTimeScopeRadius = buttonRadius * 0.5f;
+        
         const float scopeSpacing = 20.0f * controlScale;
+        
         const float scopeStartX = x + width * 0.5f - scopeSpacing;
+        
         const std::array<bool, 3> scopeValues{
             Config::g_slowTimeTop,
             Config::g_slowTimeCentral,
             Config::g_slowTimeBottom
         };
+        
         const std::array<const char*, 3> scopeLabels{
             "slow_time_top", "slow_time_left_right", "slow_time_bottom"
         };
+        
         const char* slowScopeTooltip = nullptr;
+        
         const float scopeControlAlpha =
             Config::g_slowTimeDuringRadialSelection ? 1.0f : 0.35f;
+        
         for (std::size_t i = 0; i < g_slowTimeScopeCenters.size(); ++i)
         {
             const ImVec2 center(
                 scopeStartX + scopeSpacing * static_cast<float>(i), scopeY);
             g_slowTimeScopeCenters[i] = center;
+        
             const float dx = g_settingsMousePos.x - center.x;
             const float dy = g_settingsMousePos.y - center.y;
             const bool hovered = dx * dx + dy * dy <=
                 g_slowTimeScopeRadius * g_slowTimeScopeRadius;
+        
             if (hovered)
                 slowScopeTooltip = Language::Get(scopeLabels[i]).c_str();
+        
             draw->AddCircleFilled(center, g_slowTimeScopeRadius,
                 FadeColor(scopeValues[i]
                     ? IM_COL32(235, 235, 235, 150)
@@ -21069,54 +21271,71 @@ namespace Menu
         const float slowResetAreaWidth = 27.0f * controlScale;
         const float slowTrackMaxX = x + width - slowResetAreaWidth;
         const float slowTrackWidth = std::max(slowTrackMaxX - slowTrackMinX, 1.0f);
+        
         g_slowTimeSliderMin = ImVec2(x, slowTrackY - 12.0f * controlScale);
         g_slowTimeSliderMax = ImVec2(slowTrackMaxX, slowTrackY + 12.0f * controlScale);
+        
         const ImVec2 slowResetCenter(
             x + width - 7.0f * controlScale, slowTrackY);
+        
         g_slowTimeResetHitbox.min = ImVec2(
             slowResetCenter.x - 10.0f * controlScale,
             slowResetCenter.y - 10.0f * controlScale);
         g_slowTimeResetHitbox.max = ImVec2(
             slowResetCenter.x + 10.0f * controlScale,
             slowResetCenter.y + 10.0f * controlScale);
+    
         const bool slowResetHovered =
             g_settingsMousePos.x >= g_slowTimeResetHitbox.min.x &&
             g_settingsMousePos.x <= g_slowTimeResetHitbox.max.x &&
             g_settingsMousePos.y >= g_slowTimeResetHitbox.min.y &&
             g_settingsMousePos.y <= g_slowTimeResetHitbox.max.y;
+    
         if (g_slowTimeSliderDragging && Config::g_slowTimeDuringRadialSelection)
         {
             const float normalized = std::clamp(
                 (g_settingsMousePos.x - slowTrackMinX) / slowTrackWidth, 0.0f, 1.0f);
             Config::g_slowTimeMultiplier = 0.1f + normalized * 0.7f;
         }
+    
         Config::g_slowTimeMultiplier = std::clamp(
             Config::g_slowTimeMultiplier, 0.1f, 0.8f);
+    
         const float slowControlAlpha = Config::g_slowTimeDuringRadialSelection ? 1.0f : 0.35f;
+    
         DrawTextWithShadow(draw, ImVec2(x, slowLabelY),
             FadeColor(IM_COL32(235, 230, 215, 255), alpha * slowControlAlpha),
             Language::Get("slow_time_multiplier").c_str(), alpha * slowControlAlpha);
+    
         const std::string slowValue = std::format("{:.2f}x", Config::g_slowTimeMultiplier);
+    
         const ImVec2 slowValueSize = ImGui::CalcTextSize(slowValue.c_str());
+    
         DrawTextWithShadow(draw, ImVec2(slowTrackMaxX - slowValueSize.x, slowLabelY),
             FadeColor(IM_COL32(180, 165, 130, 230), alpha * slowControlAlpha),
             slowValue.c_str(), alpha * slowControlAlpha);
+    
         const float slowNormalized = (Config::g_slowTimeMultiplier - 0.1f) / 0.7f;
+    
         draw->AddRectFilled(
             ImVec2(slowTrackMinX, slowTrackY - 6.0f * controlScale),
             ImVec2(slowTrackMaxX, slowTrackY + 6.0f * controlScale),
             FadeColor(IM_COL32(25, 26, 31, 235), alpha * slowControlAlpha),
             4.0f * controlScale);
+    
         draw->AddRectFilled(
             ImVec2(slowTrackMinX, slowTrackY - 6.0f * controlScale),
             ImVec2(slowTrackMinX + slowTrackWidth * slowNormalized,
                 slowTrackY + 6.0f * controlScale),
             FadeColor(IM_COL32(190, 184, 170, 205), alpha * slowControlAlpha),
             4.0f * controlScale);
+    
         const int slowResetShade = slowResetHovered ? 245 : 65;
+    
         draw->AddCircleFilled(slowResetCenter, 5.0f * controlScale,
             FadeColor(IM_COL32(slowResetShade, slowResetShade, slowResetShade, 255),
                 alpha * slowControlAlpha), 20);
+    
         draw->AddCircle(slowResetCenter, 6.5f * controlScale,
             FadeColor(IM_COL32(135, 132, 126, slowResetHovered ? 220 : 120),
                 alpha * slowControlAlpha), 20, 1.0f);
@@ -21124,18 +21343,23 @@ namespace Menu
         if (slowScopeTooltip)
         {
             const ImVec2 tooltipSize = ImGui::CalcTextSize(slowScopeTooltip);
+    
             const ImVec2 tooltipMin(
                 g_settingsMousePos.x + 13.0f * controlScale,
                 g_settingsMousePos.y + 13.0f * controlScale);
+    
             const ImVec2 tooltipMax(
                 tooltipMin.x + tooltipSize.x + 16.0f * controlScale,
                 tooltipMin.y + tooltipSize.y + 10.0f * controlScale);
+    
             draw->AddRectFilled(tooltipMin, tooltipMax,
                 FadeColor(IM_COL32(15, 15, 20, 245), alpha),
                 4.0f * controlScale);
+    
             draw->AddRect(tooltipMin, tooltipMax,
                 FadeColor(IM_COL32(190, 185, 170, 150), alpha),
                 4.0f * controlScale);
+    
             DrawTextWithShadow(draw,
                 ImVec2(tooltipMin.x + 8.0f * controlScale,
                     tooltipMin.y + 5.0f * controlScale),
@@ -21144,18 +21368,23 @@ namespace Menu
         else if (blurScopeTooltip)
         {
             const ImVec2 tooltipSize = ImGui::CalcTextSize(blurScopeTooltip);
+    
             const ImVec2 tooltipMin(
                 g_settingsMousePos.x + 13.0f * controlScale,
                 g_settingsMousePos.y + 13.0f * controlScale);
+    
             const ImVec2 tooltipMax(
                 tooltipMin.x + tooltipSize.x + 16.0f * controlScale,
                 tooltipMin.y + tooltipSize.y + 10.0f * controlScale);
+    
             draw->AddRectFilled(tooltipMin, tooltipMax,
                 FadeColor(IM_COL32(15, 15, 20, 245), alpha),
                 4.0f * controlScale);
+    
             draw->AddRect(tooltipMin, tooltipMax,
                 FadeColor(IM_COL32(190, 185, 170, 150), alpha),
                 4.0f * controlScale);
+    
             DrawTextWithShadow(draw,
                 ImVec2(tooltipMin.x + 8.0f * controlScale,
                     tooltipMin.y + 5.0f * controlScale),
@@ -21165,13 +21394,19 @@ namespace Menu
         // Mantém as seções seguintes abaixo do slider de slowtime. Antes,
         // ICONS ainda usava uma coordenada antiga e era desenhado por cima
         // do multiplicador depois que o bloco de Blur foi adicionado.
+    
         const float iconsTitleY = slowTrackY + 40.0f * controlScale;
+    
         const float inventoryTitleY =
             iconsTitleY + (32.0f + 4.0f * 32.0f) * controlScale;
+    
         const float fastDragOptionY = inventoryTitleY + 32.0f * controlScale;
+    
         DrawTextWithShadow(draw, ImVec2(x, animationTitleY), gold,
             Language::Get("animation").c_str(), alpha);
+    
         const ImVec2 animationTitleSize = ImGui::CalcTextSize(Language::Get("animation").c_str());
+    
         draw->AddLine(
             ImVec2(x + animationTitleSize.x + 12.0f * controlScale,
                 animationTitleY + ImGui::GetFontSize() * 0.5f),
@@ -21179,20 +21414,28 @@ namespace Menu
             FadeColor(IM_COL32(215, 195, 150, 90), alpha), 1.0f);
 
         const float selectorLabelGap = 29.0f * controlScale;
+    
         float selectorY = animationTitleY + 31.0f * controlScale;
 
         const auto drawSelector = [&](const char* label, int& selected,
             ImVec2& buttonMin, ImVec2& buttonMax, bool dragging,
             int optionCount, auto optionName) {
+    
             DrawTextWithShadow(draw, ImVec2(x, selectorY), white, label, alpha);
+    
             const float trackY = selectorY + selectorLabelGap;
+    
             const float trackInset = 5.0f * controlScale;
             const float trackMinX = x + trackInset;
             const float trackMaxX = x + width - trackInset;
+    
             const float trackWidth = std::max(trackMaxX - trackMinX, 1.0f);
+    
             const float trackHalfHeight = 8.0f * controlScale;
+    
             buttonMin = ImVec2(x, trackY - 12.0f * controlScale);
             buttonMax = ImVec2(x + width, trackY + 30.0f * controlScale + ImGui::GetFontSize());
+    
             if (dragging)
             {
                 const float normalized = std::clamp(
@@ -21200,23 +21443,31 @@ namespace Menu
                 selected = std::clamp(static_cast<int>(
                     normalized * static_cast<float>(optionCount)), 0, optionCount - 1);
             }
+    
             selected = std::clamp(selected, 0, optionCount - 1);
+    
             const bool buttonHovered =
                 g_settingsMousePos.x >= buttonMin.x && g_settingsMousePos.x <= buttonMax.x &&
                 g_settingsMousePos.y >= buttonMin.y && g_settingsMousePos.y <= buttonMax.y;
+    
             draw->AddRectFilled(
                 ImVec2(trackMinX, trackY - trackHalfHeight),
                 ImVec2(trackMaxX, trackY + trackHalfHeight),
                 FadeColor(IM_COL32(25, 26, 31, 235), alpha), 4.0f * controlScale);
+    
             draw->AddRect(
                 ImVec2(trackMinX, trackY - trackHalfHeight),
                 ImVec2(trackMaxX, trackY + trackHalfHeight),
                 FadeColor(IM_COL32(145, 145, 150, buttonHovered ? 210 : 130), alpha),
                 4.0f * controlScale, 0, 1.2f);
+    
             const float cellWidth = trackWidth /
                 static_cast<float>(std::max(optionCount, 1));
+        
             const float selectedMinX = trackMinX + cellWidth * static_cast<float>(selected);
+        
             const float selectedMaxX = selectedMinX + cellWidth;
+        
             draw->AddRectFilled(
                 ImVec2(selectedMinX + 1.5f * controlScale,
                     trackY - trackHalfHeight + 2.0f * controlScale),
@@ -21232,7 +21483,9 @@ namespace Menu
                     FadeColor(IM_COL32(180, 180, 185, 190), alpha), 1.0f);
             }
             const char* value = optionName(selected);
+        
             const ImVec2 valueSize = ImGui::CalcTextSize(value);
+        
             DrawTextWithShadow(draw, ImVec2(x + (width - valueSize.x) * 0.5f,
                 trackY + 13.0f * controlScale), white, value, alpha);
             selectorY = buttonMax.y + 10.0f * controlScale;
@@ -22087,30 +22340,40 @@ namespace Menu
         
         const auto drawLargeButton = [&](LayoutSliderHitbox& hitbox, const LayoutSliderHitbox& bounds,
             const char* label, bool active = false) {
+            
             hitbox = bounds;
+            
             if (bounds.max.y < contentTop || bounds.min.y > contentBottom)
             {
                 hitbox = hiddenHitbox();
                 return;
             }
+            
             const bool hovered = g_settingsMousePos.x >= bounds.min.x && g_settingsMousePos.x <= bounds.max.x &&
                 g_settingsMousePos.y >= bounds.min.y && g_settingsMousePos.y <= bounds.max.y;
+            
+            
             draw->AddRectFilled(bounds.min, bounds.max,
                 FadeColor(active ? IM_COL32(235, 235, 235, 70) :
                     hovered ? IM_COL32(65, 65, 70, 235) : IM_COL32(20, 20, 25, 235), alpha), 5.0f * controlScale);
+            
             draw->AddRect(bounds.min, bounds.max,
                 FadeColor(active ? IM_COL32(215, 195, 150, 235) :
                     IM_COL32(255, 255, 255, hovered ? 190 : 85), alpha), 5.0f * controlScale);
             const ImVec2 size = ImGui::CalcTextSize(label);
+            
             DrawTextWithShadow(draw, ImVec2((bounds.min.x + bounds.max.x - size.x) * 0.5f,
                 (bounds.min.y + bounds.max.y - size.y) * 0.5f),
                 FadeColor(active ? IM_COL32(215, 195, 150, 255)
                                  : IM_COL32(235, 230, 215, 255), alpha), label, alpha);
         };
         {
+            
             const auto row = rowRect(presetButtonsRow);
             const float gap = 8.0f * controlScale;
             const float half = (row.max.x - row.min.x - gap) * 0.5f;
+            
+            
             drawLargeButton(g_layoutSaveButtonHitbox,
                 { row.min, ImVec2(row.min.x + half, row.max.y) }, Language::Get("save_layout").c_str(), g_layoutNameOpen);
             drawLargeButton(g_layoutLoadButtonHitbox,
@@ -22125,16 +22388,25 @@ namespace Menu
         if (presetNameRow >= 0)
         {
             const auto field = rowRect(presetNameRow);
+            
             draw->AddRectFilled(field.min, field.max, FadeColor(IM_COL32(18, 19, 23, 235), alpha), 4.0f * controlScale);
+            
             draw->AddRect(field.min, field.max, FadeColor(IM_COL32(215, 195, 150, 155), alpha), 4.0f * controlScale);
+            
             const std::string visibleName = g_layoutPresetName.empty()
                 ? Language::Get("layout_name") : g_layoutPresetName;
+            
+
             DrawTextWithShadow(draw, ImVec2(field.min.x + 10.0f * controlScale,
                 (field.min.y + field.max.y - ImGui::GetFontSize()) * 0.5f),
                 FadeColor(IM_COL32(235, 230, 215, 255), alpha), visibleName.c_str(), alpha);
+            
+
             const auto actions = rowRect(presetNameActionsRow);
             const float gap = 8.0f * controlScale;
             const float half = (actions.max.x - actions.min.x - gap) * 0.5f;
+            
+
             drawLargeButton(g_layoutNameOkHitbox,
                 { actions.min, ImVec2(actions.min.x + half, actions.max.y) }, Language::Get("ok").c_str());
             drawLargeButton(g_layoutNameCancelHitbox,
@@ -22149,6 +22421,7 @@ namespace Menu
             if (layoutPresets.empty())
             {
                 const auto bounds = rowRect(presetListFirstRow);
+            
                 DrawTextWithShadow(draw, ImVec2(bounds.min.x + 6.0f * controlScale,
                     (bounds.min.y + bounds.max.y - ImGui::GetFontSize()) * 0.5f),
                     FadeColor(IM_COL32(165, 160, 150, 220), alpha), Language::Get("no_saved_layouts").c_str(), alpha);
@@ -22158,40 +22431,53 @@ namespace Menu
                 for (std::size_t i = 0; i < layoutPresets.size(); ++i)
                 {
                     LayoutPresetHitbox entry;
+            
                     entry.name = layoutPresets[i];
+            
                     const auto bounds = rowRect(presetListFirstRow + static_cast<int>(i));
+            
                     const float deleteSpace = 33.0f * controlScale;
                     const float gap = 7.0f * controlScale;
+            
                     const ImVec2 buttonMax(bounds.max.x - deleteSpace - gap,
                         bounds.max.y);
+            
                     drawLargeButton(entry.hitbox,
                         { bounds.min, buttonMax }, entry.name.c_str());
 
                     const ImVec2 deleteCenter(
                         bounds.max.x - deleteSpace * 0.5f,
                         (bounds.min.y + bounds.max.y) * 0.5f);
+            
                     const float deleteRadius = 9.0f * controlScale;
+            
                     entry.deleteHitbox.min = ImVec2(deleteCenter.x - deleteRadius - 5.0f,
                         deleteCenter.y - deleteRadius - 5.0f);
                     entry.deleteHitbox.max = ImVec2(deleteCenter.x + deleteRadius + 5.0f,
                         deleteCenter.y + deleteRadius + 5.0f);
+            
                     const bool deleteHovered =
                         g_settingsMousePos.x >= entry.deleteHitbox.min.x &&
                         g_settingsMousePos.x <= entry.deleteHitbox.max.x &&
                         g_settingsMousePos.y >= entry.deleteHitbox.min.y &&
                         g_settingsMousePos.y <= entry.deleteHitbox.max.y;
+            
                     const int deleteShade = deleteHovered ? 245 : 115;
+            
                     draw->AddCircleFilled(deleteCenter, deleteRadius,
                         FadeColor(IM_COL32(deleteShade, deleteShade, deleteShade, 235), alpha), 20);
                     draw->AddCircle(deleteCenter, deleteRadius,
                         FadeColor(IM_COL32(255, 255, 255, deleteHovered ? 235 : 145), alpha), 20, 1.0f);
+            
                     const float cross = 3.2f * controlScale;
+            
                     draw->AddLine(ImVec2(deleteCenter.x - cross, deleteCenter.y - cross),
                         ImVec2(deleteCenter.x + cross, deleteCenter.y + cross),
                         FadeColor(IM_COL32(25, 25, 28, 255), alpha), 1.3f);
                     draw->AddLine(ImVec2(deleteCenter.x + cross, deleteCenter.y - cross),
                         ImVec2(deleteCenter.x - cross, deleteCenter.y + cross),
                         FadeColor(IM_COL32(25, 25, 28, 255), alpha), 1.3f);
+            
                     g_layoutPresetHitboxes.push_back(std::move(entry));
                 }
             }
@@ -22202,19 +22488,28 @@ namespace Menu
         
         const auto drawSectionTitle = [&](int row, const char* title,
             LayoutGroup group, float indent = 0.0f) {
+            
             if (row < 0) return;
+            
             const float titleY = contentTop + rowHeight * static_cast<float>(row) - g_layoutPanelScroll +
                 (rowHeight - ImGui::GetFontSize()) * 0.5f;
+            
             const float titleX = x + indent;
+            
             auto& hitbox = g_layoutGroupHitboxes[static_cast<std::size_t>(group)];
+            
             hitbox.min = ImVec2(x, contentTop + rowHeight * static_cast<float>(row) - g_layoutPanelScroll);
+            
             hitbox.max = ImVec2(x + width, hitbox.min.y + rowHeight);
+            
             if (hitbox.max.y < contentTop || hitbox.min.y > contentBottom)
                 hitbox = { ImVec2(1.0f, 1.0f), ImVec2(0.0f, 0.0f) };
+            
             const bool hovered = g_settingsMousePos.x >= hitbox.min.x &&
                 g_settingsMousePos.x <= hitbox.max.x &&
                 g_settingsMousePos.y >= hitbox.min.y &&
                 g_settingsMousePos.y <= hitbox.max.y;
+            
             const bool expanded = groupExpanded(group);
             const float arrowX = titleX + 5.0f * controlScale;
             const float arrowY = titleY + ImGui::GetFontSize() * 0.52f;
@@ -22494,12 +22789,19 @@ namespace Menu
         
         const auto drawColorControl = [&](int row, LayoutColorControl control,
             const char* label, std::uint32_t color) {
+            
             if (row < 0) return;
+            
             const float rowY = contentTop + 8.0f * controlScale - g_layoutPanelScroll +
                 rowHeight * static_cast<float>(row);
+            
             auto& hitbox = g_layoutColorHitboxes[static_cast<std::size_t>(control)];
+            
+            
             hitbox.min = ImVec2(trackMinX, rowY);
             hitbox.max = ImVec2(trackMaxX, rowY + 30.0f * controlScale);
+            
+            
             if (hitbox.max.y < contentTop || hitbox.min.y > contentBottom)
             {
                 hitbox = { ImVec2(1.0f, 1.0f), ImVec2(0.0f, 0.0f) };
@@ -22527,26 +22829,38 @@ namespace Menu
             draw->AddCircle(swatch, swatchRadius + 1.5f,
                 FadeColor(IM_COL32(255, 255, 255, hovered ? 220 : 110), alpha), 32, 1.5f);
         
+
             const ImVec2 resetCenter(x + width - 7.0f * controlScale,
                 rowY + ImGui::GetFontSize() * 0.5f);
         
             auto& reset = g_layoutColorResetHitboxes[static_cast<std::size_t>(control)];
+        
+
             reset.min = ImVec2(resetCenter.x - 8.0f * controlScale,
                 resetCenter.y - 8.0f * controlScale);
+        
             reset.max = ImVec2(resetCenter.x + 8.0f * controlScale,
                 resetCenter.y + 8.0f * controlScale);
+        
             const bool resetHovered = g_settingsMousePos.x >= reset.min.x &&
                 g_settingsMousePos.x <= reset.max.x &&
                 g_settingsMousePos.y >= reset.min.y &&
                 g_settingsMousePos.y <= reset.max.y;
+        
             if (resetHovered)
                 previewButtonTooltip = Language::Get("reset_value").c_str();
+        
+        
             draw->AddCircleFilled(resetCenter, 5.0f * controlScale,
                 FadeColor(resetHovered ? IM_COL32(250, 250, 250, 255)
                     : IM_COL32(70, 70, 75, 220), alpha), 20);
+        
             draw->AddCircle(resetCenter, 6.5f * controlScale,
                 FadeColor(IM_COL32(120, 118, 112, 170), alpha), 20, 1.0f);
         };
+
+
+
         drawColorControl(backgroundColorRow, LayoutColorControl::Background,
             Language::Get("background_color").c_str(), Config::g_itemBackgroundColor);
         drawColorControl(borderColorRow, LayoutColorControl::Border,
@@ -22570,59 +22884,89 @@ namespace Menu
         drawColorControl(bottomIconColorRow, LayoutColorControl::BottomIcon,
             Language::Get("base_icon_color").c_str(), Config::g_bottomItemStyle.iconColor);
 
+
+
         static constexpr std::array<const char*, 7> potionLabels{
             "potion_health", "potion_stamina", "potion_magicka", "potion_poison",
             "potion_fire", "potion_frost", "potion_shock"
         };
+
+
         static constexpr std::array<const char*, 8> schoolLabels{
             "school_alteration", "school_conjuration", "school_destruction",
             "school_illusion", "school_restoration", "magic_fire", "magic_frost", "magic_shock"
         };
+
+
         static constexpr std::array<const char*, 5> enchantLabels{
             "enchant_fire", "enchant_frost", "enchant_shock", "enchant_poison",
             "enchant_default"
         };
+        
+        
+        
         for (std::size_t i = 0; i < potionColorRows.size(); ++i)
             drawColorControl(potionColorRows[i], static_cast<LayoutColorControl>(
                 static_cast<std::size_t>(LayoutColorControl::PotionHealth) + i),
                 Language::Get(potionLabels[i]).c_str(), Config::g_potionColors[i]);
+        
+        
         for (std::size_t i = 0; i < schoolColorRows.size(); ++i)
             drawColorControl(schoolColorRows[i], static_cast<LayoutColorControl>(
                 static_cast<std::size_t>(LayoutColorControl::SchoolAlteration) + i),
                 Language::Get(schoolLabels[i]).c_str(), i < Config::g_schoolColors.size()
                     ? Config::g_schoolColors[i]
                     : Config::g_magicElementColors[i - Config::g_schoolColors.size()]);
+        
+        
         for (std::size_t i = 0; i < enchantColorRows.size(); ++i)
             drawColorControl(enchantColorRows[i], static_cast<LayoutColorControl>(
                 static_cast<std::size_t>(LayoutColorControl::EnchantFire) + i),
                 Language::Get(enchantLabels[i]).c_str(), Config::g_enchantColors[i]);
 
+
         if (colorPickerRow >= 0 && g_openLayoutColor >= 0)
         {
+            
             const float pickerTop = contentTop + rowHeight * static_cast<float>(colorPickerRow) -
                 g_layoutPanelScroll;
             const float pickerRadius = std::min(width * 0.25f, rowHeight * 1.15f);
+            
+
             const ImVec2 pickerCenter(x + width * 0.5f,
                 pickerTop + rowHeight * 1.35f);
+            
             g_layoutColorPickerHitbox.min = ImVec2(
                 pickerCenter.x - pickerRadius, pickerCenter.y - pickerRadius);
+            
             g_layoutColorPickerHitbox.max = ImVec2(
                 pickerCenter.x + pickerRadius, pickerCenter.y + pickerRadius);
+            
             constexpr int segments = 48;
+            
             constexpr int rings = 14;
+            
             for (int ring = 0; ring < rings; ++ring)
             {
                 const float innerRadius = pickerRadius * static_cast<float>(ring) / rings;
+            
                 const float outerRadius = pickerRadius * static_cast<float>(ring + 1) / rings;
+            
                 const float saturationRing = (static_cast<float>(ring) + 0.5f) / rings;
+            
+            
                 for (int segment = 0; segment < segments; ++segment)
                 {
+            
                     const float a0 = 2.0f * PI * static_cast<float>(segment) / segments;
                     const float a1 = 2.0f * PI * static_cast<float>(segment + 1) / segments;
+            
                     float r, g, b;
+            
                     ImGui::ColorConvertHSVtoRGB(
                         (static_cast<float>(segment) + 0.5f) / segments,
                         saturationRing, 1.0f, r, g, b);
+            
                     draw->AddQuadFilled(
                         ImVec2(pickerCenter.x + std::cos(a0) * innerRadius,
                             pickerCenter.y + std::sin(a0) * innerRadius),
@@ -22636,8 +22980,11 @@ namespace Menu
                             static_cast<int>(g * 255), static_cast<int>(b * 255), 255), alpha));
                 }
             }
+            
             const auto openControl = static_cast<LayoutColorControl>(g_openLayoutColor);
+            
             std::uint32_t* selectedColor = nullptr;
+            
             switch (openControl)
             {
             case LayoutColorControl::Background: selectedColor = &Config::g_itemBackgroundColor; break;
@@ -22651,7 +22998,9 @@ namespace Menu
             case LayoutColorControl::BottomBackground: selectedColor = &Config::g_bottomItemStyle.backgroundColor; break;
             case LayoutColorControl::BottomBorder: selectedColor = &Config::g_bottomItemStyle.borderColor; break;
             case LayoutColorControl::BottomIcon: selectedColor = &Config::g_bottomItemStyle.iconColor; break;
+            
             default:
+            
                 if (openControl >= LayoutColorControl::PotionHealth && openControl <= LayoutColorControl::PotionShock)
                     selectedColor = &Config::g_potionColors[static_cast<std::size_t>(openControl) -
                         static_cast<std::size_t>(LayoutColorControl::PotionHealth)];
@@ -22666,9 +23015,13 @@ namespace Menu
                         static_cast<std::size_t>(LayoutColorControl::EnchantFire)];
                 break;
             }
+            
             if (!selectedColor) selectedColor = &Config::g_baseIconColor;
+            
             float hue = 0.0f, saturation = 0.0f, value = 0.0f;
+            
             const ImVec4 current = unpackColor(*selectedColor);
+            
             ImGui::ColorConvertRGBtoHSV(current.x, current.y, current.z,
                 hue, saturation, value);
             if (g_activeLayoutColor == g_openLayoutColor)
@@ -22683,9 +23036,12 @@ namespace Menu
                 ImGui::ColorConvertHSVtoRGB(hue, saturation, 1.0f, r, g, b);
                 *selectedColor = packColor(r, g, b);
             }
+
             const float markerAngle = hue * 2.0f * PI;
+            
             const ImVec2 marker(pickerCenter.x + std::cos(markerAngle) * pickerRadius * saturation,
                 pickerCenter.y + std::sin(markerAngle) * pickerRadius * saturation);
+            
             draw->AddCircle(marker, 5.0f * controlScale,
                 FadeColor(IM_COL32(15, 15, 18, 255), alpha), 24, 2.5f);
             draw->AddCircle(marker, 7.0f * controlScale,
@@ -22703,26 +23059,39 @@ namespace Menu
                 g_layoutMirrorHitboxes[i] = g_layoutSliderHitboxes[i];
                 continue;
             }
+    
             const LayoutSlider sliderKind = static_cast<LayoutSlider>(i);
+    
             Config::ItemPreviewProfile previewProfile{};
             PreviewLayoutField previewField{};
+    
             const bool previewControl = GetPreviewSliderInfo(
                 sliderKind, previewProfile, previewField);
+    
             const bool hasCopy = previewControl &&
                 previewProfile != Config::ItemPreviewProfile::Menu;
+    
             const bool hasMirror = hasCopy && PreviewFieldSupportsMirror(previewField);
+    
             const int auxiliaryButtons = (hasCopy ? 1 : 0) + (hasMirror ? 1 : 0);
+    
             const float rowTrackMaxX = trackMaxX -
                 static_cast<float>(auxiliaryButtons) * 24.0f * controlScale;
+    
             const float rowY = contentTop + 8.0f * controlScale - g_layoutPanelScroll +
                 rowHeight * static_cast<float>(g_layoutSliderRows[i]);
+    
             const float trackY = rowY + ImGui::GetFontSize() + 10.0f * controlScale;
+    
             auto& hitbox = g_layoutSliderHitboxes[i];
+    
             hitbox.min = ImVec2(trackMinX, trackY - trackHeight * 0.5f - 3.0f * controlScale);
             hitbox.max = ImVec2(rowTrackMaxX, trackY + trackHeight * 0.5f + 3.0f * controlScale);
 
             const ImVec2 resetCenter(x + width - resetRadius - 2.0f, trackY);
+    
             auto& resetHitbox = g_layoutResetHitboxes[i];
+    
             resetHitbox.min = ImVec2(resetCenter.x - 10.0f * controlScale, resetCenter.y - 10.0f * controlScale);
             resetHitbox.max = ImVec2(resetCenter.x + 10.0f * controlScale, resetCenter.y + 10.0f * controlScale);
 
@@ -22775,13 +23144,16 @@ namespace Menu
 
             if (g_activeLayoutSlider == static_cast<LayoutSlider>(i))
             {
+    
                 const float normalized = std::clamp(
                     (g_settingsMousePos.x - trackMinX) /
                     std::max(rowTrackMaxX - trackMinX, 1.0f),
                     0.0f, 1.0f);
                 *sliders[i].value = sliders[i].minimum +
                     (sliders[i].maximum - sliders[i].minimum) * normalized;
+    
                 std::size_t activePreviewCategoryIndex = 0;
+    
                 if (GetPreviewCategorySliderInfo(
                         static_cast<LayoutSlider>(i),
                         activePreviewCategoryIndex))
@@ -22791,6 +23163,7 @@ namespace Menu
                     // multiplicador continuamente.
                     ItemPreview::InvalidateSizeScale();
                 }
+    
                 if (static_cast<LayoutSlider>(i) == LayoutSlider::RadialQuantity)
                 {
                     *sliders[i].value = std::round(*sliders[i].value);
@@ -22822,18 +23195,26 @@ namespace Menu
                     (previewField == PreviewLayoutField::ItemPositionX ||
                      previewField == PreviewLayoutField::ItemPositionY))
                 {
+    
                     auto& preview = Config::GetItemPreviewLayout(previewProfile);
+    
                     const WheelLayout wheelLayout = GetWheelLayout();
+    
                     const ImVec2 radialCenter = PreviewRadialCenter(
                         previewProfile, wheelLayout);
+    
                     const ImVec2 previewPosition(
                         LayoutLerp(wheelLayout.min.x, wheelLayout.max.x,
                             preview.itemPositionX),
                         LayoutLerp(wheelLayout.min.y, wheelLayout.max.y,
                             preview.itemPositionY));
+    
                     const float dx = previewPosition.x - radialCenter.x;
+    
                     const float dy = previewPosition.y - radialCenter.y;
+    
                     const float snapRadius = 44.0f * controlScale;
+    
                     if (dx * dx + dy * dy <= snapRadius * snapRadius)
                     {
                         const float layoutWidth = std::max(
@@ -22855,23 +23236,29 @@ namespace Menu
             const bool hovered =
                 g_settingsMousePos.x >= hitbox.min.x && g_settingsMousePos.x <= hitbox.max.x &&
                 g_settingsMousePos.y >= hitbox.min.y && g_settingsMousePos.y <= hitbox.max.y;
+    
             const bool resetHovered =
                 g_settingsMousePos.x >= resetHitbox.min.x && g_settingsMousePos.x <= resetHitbox.max.x &&
                 g_settingsMousePos.y >= resetHitbox.min.y && g_settingsMousePos.y <= resetHitbox.max.y;
+    
             if (resetHovered)
                 previewButtonTooltip = Language::Get("reset_value").c_str();
+    
             const float t = std::clamp(
                 (*sliders[i].value - sliders[i].minimum) /
                 std::max(sliders[i].maximum - sliders[i].minimum, 0.001f),
                 0.0f, 1.0f);
+    
             const float fillX = trackMinX + (rowTrackMaxX - trackMinX) * t;
 
             DrawTextWithShadow(draw, ImVec2(x, rowY),
                 FadeColor(IM_COL32(235, 230, 215, 255), alpha), sliders[i].label, alpha);
 
             std::size_t previewCategoryIndex = 0;
+    
             const bool previewCategoryMultiplier =
                 GetPreviewCategorySliderInfo(sliderKind, previewCategoryIndex);
+    
             const std::string valueText = sliderKind == LayoutSlider::FontSize ||
                 previewCategoryMultiplier
                 ? std::format("{:.2f}x", *sliders[i].value)
@@ -22882,49 +23269,67 @@ namespace Menu
                     sliderKind == LayoutSlider::BottomItemQuantity
                     ? std::format("{:.0f}", *sliders[i].value)
                     : std::format("{:.0f}%", *sliders[i].value);
-            const ImVec2 valueSize = ImGui::CalcTextSize(valueText.c_str());
+    
+                const ImVec2 valueSize = ImGui::CalcTextSize(valueText.c_str());
+    
             DrawTextWithShadow(draw, ImVec2(rowTrackMaxX - valueSize.x, rowY),
                 FadeColor(IM_COL32(180, 165, 130, 230), alpha), valueText.c_str(), alpha);
 
             draw->AddRectFilled(ImVec2(trackMinX, trackY - trackHeight * 0.5f),
                 ImVec2(rowTrackMaxX, trackY + trackHeight * 0.5f),
                 FadeColor(IM_COL32(28, 29, 34, 235), alpha), 4.0f);
+    
             draw->AddRectFilled(ImVec2(trackMinX, trackY - trackHeight * 0.5f),
                 ImVec2(fillX, trackY + trackHeight * 0.5f),
                 FadeColor(hovered ? IM_COL32(235, 230, 215, 225) : IM_COL32(190, 184, 170, 205), alpha),
                 4.0f);
+    
             draw->AddRect(ImVec2(trackMinX, trackY - trackHeight * 0.5f),
                 ImVec2(rowTrackMaxX, trackY + trackHeight * 0.5f),
                 FadeColor(IM_COL32(115, 112, 106, hovered ? 210 : 135), alpha), 4.0f, 0, 1.0f);
 
             g_layoutResetFlash[i] = std::max(0.0f, g_layoutResetFlash[i] - dt * 3.5f);
+    
             const float resetLight = std::max(g_layoutResetFlash[i], resetHovered ? 0.45f : 0.0f);
+    
             const int resetShade = static_cast<int>(55.0f + 200.0f * resetLight);
+    
             draw->AddCircleFilled(resetCenter, resetRadius,
                 FadeColor(IM_COL32(resetShade, resetShade, resetShade, 255), alpha), 20);
+    
             draw->AddCircle(resetCenter, resetRadius + 1.5f,
                 FadeColor(IM_COL32(125, 122, 116, 150), alpha), 20, 1.0f);
 
             const auto drawAuxiliaryDot = [&](const ImVec2& center,
                 LayoutSliderHitbox& button, float& flash, const char* tooltip) {
+    
                 if (button.max.x < button.min.x) return;
+    
                 const bool buttonHovered =
                     g_settingsMousePos.x >= button.min.x && g_settingsMousePos.x <= button.max.x &&
                     g_settingsMousePos.y >= button.min.y && g_settingsMousePos.y <= button.max.y;
+    
                 flash = std::max(0.0f, flash - dt * 3.5f);
+    
                 const float light = std::max(flash, buttonHovered ? 0.45f : 0.0f);
+    
                 const int shade = static_cast<int>(55.0f + 200.0f * light);
+    
                 draw->AddCircleFilled(center, resetRadius,
                     FadeColor(IM_COL32(shade, shade, shade, 255), alpha), 20);
+    
                 draw->AddCircle(center, resetRadius + 1.5f,
                     FadeColor(IM_COL32(125, 122, 116, 150), alpha), 20, 1.0f);
+    
                 if (buttonHovered)
                     previewButtonTooltip = tooltip;
             };
+    
             if (hasCopy)
                 drawAuxiliaryDot(copyCenter, g_layoutCopyHitboxes[i],
                     g_layoutCopyFlash[i], Language::Get("copy_opposite").c_str());
-            if (hasMirror)
+    
+                if (hasMirror)
                 drawAuxiliaryDot(mirrorCenter, g_layoutMirrorHitboxes[i],
                     g_layoutMirrorFlash[i], Language::Get("mirror_opposite").c_str());
         }
@@ -22940,17 +23345,22 @@ namespace Menu
             22.0f * controlScale,
             (scrollbarBottom - scrollbarTop) *
                 std::clamp(visibleContentHeight / std::max(totalContentHeight, 1.0f), 0.0f, 1.0f));
-        const float thumbTravel = std::max(0.0f,
+    
+            const float thumbTravel = std::max(0.0f,
             (scrollbarBottom - scrollbarTop) - thumbHeight);
+    
         const float scrollT = g_layoutPanelMaxScroll > 0.0f
             ? g_layoutPanelScroll / g_layoutPanelMaxScroll
             : 0.0f;
+    
         const float thumbTop = scrollbarTop + thumbTravel * scrollT;
+    
         const bool scrollbarHovered =
             g_settingsMousePos.x >= g_layoutScrollbarHitbox.min.x &&
             g_settingsMousePos.x <= g_layoutScrollbarHitbox.max.x &&
             g_settingsMousePos.y >= g_layoutScrollbarHitbox.min.y &&
             g_settingsMousePos.y <= g_layoutScrollbarHitbox.max.y;
+    
         draw->AddRectFilled(
             ImVec2(scrollbarX - 4.0f * controlScale, thumbTop),
             ImVec2(scrollbarX + 4.0f * controlScale, thumbTop + thumbHeight),
@@ -22963,23 +23373,33 @@ namespace Menu
         // barra de rolagem do painel.
         if (previewButtonTooltip)
         {
+    
             const ImVec2 textSize = ImGui::CalcTextSize(previewButtonTooltip);
+    
             const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+    
             const float tooltipPadding = 7.0f * controlScale;
+    
             ImVec2 tooltipMin(
                 g_settingsMousePos.x + 14.0f * controlScale,
                 g_settingsMousePos.y + 14.0f * controlScale);
+    
             tooltipMin.x = std::clamp(tooltipMin.x, 4.0f,
                 std::max(4.0f, displaySize.x - textSize.x - tooltipPadding * 2.0f - 4.0f));
+    
             tooltipMin.y = std::clamp(tooltipMin.y, 4.0f,
                 std::max(4.0f, displaySize.y - textSize.y - tooltipPadding * 2.0f - 4.0f));
+    
             const ImVec2 tooltipMax(
                 tooltipMin.x + textSize.x + tooltipPadding * 2.0f,
                 tooltipMin.y + textSize.y + tooltipPadding * 2.0f);
+    
             draw->AddRectFilled(tooltipMin, tooltipMax,
                 FadeColor(IM_COL32(13, 14, 18, 245), alpha), 4.0f * controlScale);
+    
             draw->AddRect(tooltipMin, tooltipMax,
                 FadeColor(IM_COL32(180, 176, 165, 180), alpha), 4.0f * controlScale);
+    
             DrawTextWithShadow(draw,
                 ImVec2(tooltipMin.x + tooltipPadding,
                     tooltipMin.y + tooltipPadding),
@@ -23010,18 +23430,27 @@ namespace Menu
         const ImVec2& previewCenter, const ImVec2& innerRadius,
         const ImVec2& outerRadius, ImVec2& uvMinimum, ImVec2& uvMaximum)
     {
+    
         static SettingsBackdropTextureCache cache;
+    
         constexpr float cellSize = 8.0f;
+    
         const int columns = std::max(1, static_cast<int>(
             std::ceil((maximum.x - minimum.x) / cellSize)));
+    
         const int rows = std::max(1, static_cast<int>(
             std::ceil((maximum.y - minimum.y) / cellSize)));
+    
         const int width = columns + 1;
+    
         const int height = rows + 1;
+    
         uvMinimum = ImVec2(0.5f / width, 0.5f / height);
+    
         uvMaximum = ImVec2(
             (static_cast<float>(width) - 0.5f) / width,
             (static_cast<float>(height) - 0.5f) / height);
+    
         const bool unchanged = cache.view && cache.minimum.x == minimum.x &&
             cache.minimum.y == minimum.y && cache.maximum.x == maximum.x &&
             cache.maximum.y == maximum.y &&
@@ -23032,6 +23461,7 @@ namespace Menu
             cache.outerRadius.x == outerRadius.x &&
             cache.outerRadius.y == outerRadius.y &&
             cache.width == width && cache.height == height;
+    
         if (unchanged) return cache.view;
 
         if (cache.view)
@@ -23039,29 +23469,38 @@ namespace Menu
             cache.view->Release();
             cache.view = nullptr;
         }
+    
         auto* device = RenderManager::GetDevice();
         if (!device) return nullptr;
 
         std::vector<std::uint8_t> pixels(
             static_cast<std::size_t>(width * height * 4));
+    
         const float innerRatio = std::min(
             innerRadius.x / outerRadius.x, innerRadius.y / outerRadius.y);
+    
         for (int row = 0; row < height; ++row)
         {
             const float y = std::min(minimum.y + row * cellSize, maximum.y);
             for (int column = 0; column < width; ++column)
             {
                 const float x = std::min(minimum.x + column * cellSize, maximum.x);
+    
                 const float dx = std::abs(x - previewCenter.x);
+    
                 const float dy = std::abs(y - previewCenter.y);
+    
                 const float distance = std::sqrt(
                     (dx * dx) / (outerRadius.x * outerRadius.x) +
                     (dy * dy) / (outerRadius.y * outerRadius.y));
+    
                 float t = std::clamp((distance - innerRatio) /
                     (1.0f - innerRatio), 0.0f, 1.0f);
                 t = t * t * (3.0f - 2.0f * t);
+    
                 const std::size_t index = static_cast<std::size_t>(
                     (row * width + column) * 4);
+    
                 pixels[index] = 5;
                 pixels[index + 1] = 6;
                 pixels[index + 2] = 9;
@@ -23082,16 +23521,21 @@ namespace Menu
         data.pSysMem = pixels.data();
         data.SysMemPitch = static_cast<UINT>(width * 4);
         ID3D11Texture2D* texture = nullptr;
+    
         if (FAILED(device->CreateTexture2D(&description, &data, &texture)) || !texture)
             return nullptr;
+    
         const HRESULT result = device->CreateShaderResourceView(
             texture, nullptr, &cache.view);
+    
         texture->Release();
+    
         if (FAILED(result))
         {
             cache.view = nullptr;
             return nullptr;
         }
+    
         cache.minimum = minimum;
         cache.maximum = maximum;
         cache.previewCenter = previewCenter;
@@ -23099,6 +23543,7 @@ namespace Menu
         cache.outerRadius = outerRadius;
         cache.width = width;
         cache.height = height;
+    
         return cache.view;
     }
 
@@ -23237,6 +23682,7 @@ namespace Menu
 
         ImVec2 backdropUvMin{};
         ImVec2 backdropUvMax{};
+    
         if (auto* backdrop = GetSettingsBackdropTexture(
             backdropMin, backdropMax, previewCenter,
             ImVec2(innerRadiusX, innerRadiusY),
@@ -23252,8 +23698,10 @@ namespace Menu
         else
         {
             constexpr float fallbackCellSize = 8.0f;
+    
             const float innerRatio = std::min(
                 innerRadiusX / outerRadiusX, innerRadiusY / outerRadiusY);
+    
             const auto fallbackColor = [&](float x, float y) {
                 const float dx = std::abs(x - previewCenter.x);
                 const float dy = std::abs(y - previewCenter.y);
@@ -23682,14 +24130,18 @@ namespace Menu
         // ============================================================
         //old
         RadialItem previewItem{};
+    
         Config::ItemPreviewProfile activePreviewProfile =
             Config::ItemPreviewProfile::Menu;
+    
         PreviewLayoutField activePreviewField{};
+    
         const bool previewLayoutControl =
             g_settingsSection == SettingsSection::Layout &&
             GetActivePreviewControl(activePreviewProfile, activePreviewField);
 
         Config::ItemPreviewCategory activePreviewCategory{};
+    
         const bool previewCategoryControl =
             g_settingsSection == SettingsSection::Layout &&
             GetActivePreviewCategory(activePreviewCategory);
@@ -24217,7 +24669,9 @@ namespace Menu
             // No Inventory o rastro fica atrás dos slots/ícones.
             UpdateAndDrawRadialParticles(
                 ImGui::GetForegroundDrawList(), deltaTime, g_globalAlpha);
+    
             DrawInventoryRadialMenu();
+    
             DrawDraggedInventoryItem();
             return;
         }
@@ -24275,6 +24729,7 @@ namespace Menu
             ((g_radialSide == RadialSide::Left ||
                 g_radialSide == RadialSide::Right) && Config::g_slowTimeCentral) ||
             (g_radialSide == RadialSide::Bottom && Config::g_slowTimeBottom);
+    
         Slowtime::Update(
             Config::g_slowTimeDuringRadialSelection &&
                 g_showWindow &&
@@ -24287,6 +24742,7 @@ namespace Menu
             ((g_radialSide == RadialSide::Left ||
                 g_radialSide == RadialSide::Right) && Config::g_blurCentral) ||
             (g_radialSide == RadialSide::Bottom && Config::g_blurBottom);
+    
         SetGameplayBlurApplied(
             g_showWindow && g_radialMode == RadialMode::Gameplay &&
             blurSideEnabled);
@@ -24304,17 +24760,22 @@ namespace Menu
 
         const float centerVisualAlpha = g_globalAlpha *
             std::clamp(Config::g_centerOpacity, 0.0f, 100.0f) * 0.01f;
+    
         float selectedRadialOpacity = 1.0f;
+    
         if (g_radialSide == RadialSide::Left || g_radialSide == RadialSide::Right)
             selectedRadialOpacity = std::clamp(Config::g_sideOpacity, 0.0f, 100.0f) * 0.01f;
         else if (g_radialSide == RadialSide::Top)
             selectedRadialOpacity = std::clamp(Config::g_topOpacity, 0.0f, 100.0f) * 0.01f;
         else if (g_radialSide == RadialSide::Bottom)
             selectedRadialOpacity = std::clamp(Config::g_bottomOpacity, 0.0f, 100.0f) * 0.01f;
+    
         const float radialVisualAlpha = g_globalAlpha * selectedRadialOpacity;
+    
         const float finalSubMenuAlpha = radialVisualAlpha * g_menuAlpha;
 
         mouse = GetRadialMousePosition();
+    
         ImDrawList* draw = ImGui::GetForegroundDrawList();
 
         // ------------------------------------------------------------
@@ -24376,58 +24837,85 @@ namespace Menu
             RadialSideHasItems(g_radialSide) &&
             (g_radialSide == RadialSide::Left || g_radialSide == RadialSide::Right)))
         {
+    
             ImVec2 lineEnd = ClampPointToDistance(g_radialOrigin, mouse, GetMenuLineLength());
+    
             const float guideAlpha = g_radialSide == RadialSide::None
                 ? centerVisualAlpha
                 : radialVisualAlpha;
 
+    
             ImVec2 previewCenter{};
+    
             float previewMaskRadius = 0.0f;
+    
             const bool hasPreviewMask = GetVisibleItemPreviewMask(
                 previewCenter, previewMaskRadius);
+    
             float lineEndVisibility = 1.0f;
 
             if (hasPreviewMask)
             {
+    
                 constexpr int segments = 40;
+    
                 const float fadeStart = previewMaskRadius * 0.78f;
+    
                 const float fadeEnd = std::max(
                     previewMaskRadius * 1.16f, fadeStart + 1.0f);
+    
                 for (int i = 0; i < segments; ++i)
                 {
+    
                     const float startT = static_cast<float>(i) / segments;
+    
                     const float endT = static_cast<float>(i + 1) / segments;
+    
                     const float middleT = (startT + endT) * 0.5f;
+    
                     const ImVec2 middle(
                         g_radialOrigin.x + (lineEnd.x - g_radialOrigin.x) * middleT,
                         g_radialOrigin.y + (lineEnd.y - g_radialOrigin.y) * middleT);
+    
                     const float maskDx = middle.x - previewCenter.x;
+    
                     const float maskDy = middle.y - previewCenter.y;
+    
                     const float distance = std::sqrt(
                         maskDx * maskDx + maskDy * maskDy);
+    
                     float visibility = std::clamp(
                         (distance - fadeStart) / (fadeEnd - fadeStart),
                         0.0f, 1.0f);
+    
                     visibility = visibility * visibility * (3.0f - 2.0f * visibility);
+    
                     if (visibility <= 0.0f)
                         continue;
+    
                     const ImVec2 start(
                         g_radialOrigin.x + (lineEnd.x - g_radialOrigin.x) * startT,
                         g_radialOrigin.y + (lineEnd.y - g_radialOrigin.y) * startT);
+    
                     const ImVec2 end(
                         g_radialOrigin.x + (lineEnd.x - g_radialOrigin.x) * endT,
                         g_radialOrigin.y + (lineEnd.y - g_radialOrigin.y) * endT);
+    
                     draw->AddLine(start, end,
                         FadeColor(IM_COL32(255, 255, 255, 130), guideAlpha * visibility), 2.0f);
                 }
 
                 const float endDx = lineEnd.x - previewCenter.x;
+    
                 const float endDy = lineEnd.y - previewCenter.y;
+    
                 const float endDistance = std::sqrt(
                     endDx * endDx + endDy * endDy);
+    
                 lineEndVisibility = std::clamp(
                     (endDistance - fadeStart) / (fadeEnd - fadeStart),
                     0.0f, 1.0f);
+    
                 lineEndVisibility = lineEndVisibility * lineEndVisibility *
                     (3.0f - 2.0f * lineEndVisibility);
             }
