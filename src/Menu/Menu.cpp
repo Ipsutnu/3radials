@@ -1036,6 +1036,13 @@ namespace Menu
     // Estado de abertura.
     static bool g_settingsSectionExpanded = false;
 
+    // Após fechar um painel, mantém os três atalhos disponíveis por alguns
+    // segundos. Isso evita precisar reabrir o seletor central para trocar de
+    // seção logo em seguida.
+    static float g_settingsSectionLingerRemaining = 0.0f;
+    static bool g_settingsSectionLingerActive = false;
+    constexpr float kSettingsSectionLingerDuration = 10.0f;
+
     // Identificação do item associado ao seletor.
     static RE::TESForm* g_sectionPreviewForm = nullptr;
 
@@ -1197,15 +1204,45 @@ namespace Menu
     // FECHAMENTO DO SELETOR
     // ============================================================
 
+    static void CloseLayoutPresetDialogs()
+    {
+        // Equivale a cancelar o SAVE e recolher a lista de LOAD, sem
+        // modificar o layout nem o texto que o usuário já digitou.
+        g_layoutNameOpen = false;
+        g_layoutLoadOpen = false;
+    }
+
     static void CloseSettingsSectionMenu()
     {
+        CloseLayoutPresetDialogs();
+
         g_settingsSectionExpanded = false;
+
+        g_settingsSectionLingerRemaining = 0.0f;
+        g_settingsSectionLingerActive = false;
 
         g_settingsSection =
             SettingsSection::ItemInfo;
 
         // Não zeramos os valores de animação.
         // O Update reduzirá os valores gradualmente.
+    }
+
+    static void CloseSettingsPanelKeepSectionShortcuts()
+    {
+        CloseLayoutPresetDialogs();
+
+        // Fecha o painel de conteúdo imediatamente, mas mantém o seletor
+        // expandido e interativo durante a janela de retorno.
+        g_settingsSection = SettingsSection::ItemInfo;
+        g_settingsSectionExpanded = true;
+        // Esta função também pode ser chamada por uma atualização de seleção
+        // enquanto o contador já está em curso. Não o reinicie nesse caso.
+        if (!g_settingsSectionLingerActive)
+        {
+            g_settingsSectionLingerRemaining = kSettingsSectionLingerDuration;
+            g_settingsSectionLingerActive = true;
+        }
     }
 
     // ============================================================
@@ -1307,12 +1344,9 @@ namespace Menu
                 currentCenterRadius
             );
 
-        // ========================================================
-        // CONTROLE DE ABERTURA E FECHAMENTO
-        // ========================================================
-
-        if (!settingsOpen ||
-            mouse.x < screen.x * 0.50f)
+        // O botão central precisa abrir o seletor antes de os círculos
+        // secundários serem calculados nesta atualização.
+        if (!settingsOpen)
         {
             CloseSettingsSectionMenu();
         }
@@ -1470,6 +1504,8 @@ namespace Menu
         {
             if (gameplayHovered)
             {
+                if (g_settingsSection == SettingsSection::Layout)
+                    CloseLayoutPresetDialogs();
                 g_settingsSection =
                     SettingsSection::Gameplay;
             }
@@ -1480,8 +1516,61 @@ namespace Menu
             }
             else if (centerHovered)
             {
+                if (g_settingsSection == SettingsSection::Layout)
+                    CloseLayoutPresetDialogs();
                 g_settingsSection =
                     SettingsSection::Settings;
+            }
+        }
+
+        // ========================================================
+        // TEMPORIZADOR DE RECOLHIMENTO
+        //
+        // Hover em qualquer uma das três bolinhas restaura o contador e o
+        // pausa. Enquanto o respectivo painel permanece aberto, ele também
+        // fica pausado. Só contamos quando o cursor saiu da área do seletor
+        // ou do painel de configurações.
+        // ========================================================
+
+        if (settingsOpen && g_settingsSectionExpanded)
+        {
+            const bool selectorHovered = centerHovered || gameplayHovered || layoutHovered;
+
+            if (selectorHovered)
+            {
+                g_settingsSectionLingerRemaining = kSettingsSectionLingerDuration;
+                g_settingsSectionLingerActive = false;
+            }
+            else if (g_settingsSection != SettingsSection::ItemInfo)
+            {
+                // Mantém a lógica original do painel: mover do seletor para
+                // os seus controles não o fecha. Só cruzar o centro da tela
+                // encerra a seção aberta.
+                if (mouse.x < screen.x * 0.50f)
+                    CloseSettingsPanelKeepSectionShortcuts();
+                else
+                {
+                    g_settingsSectionLingerRemaining = kSettingsSectionLingerDuration;
+                    g_settingsSectionLingerActive = false;
+                }
+            }
+
+            if (g_settingsSection == SettingsSection::ItemInfo &&
+                !selectorHovered)
+            {
+                // O conteúdo já foi fechado por um gatilho válido (cruzar o
+                // centro ou mudar de item). A partir daqui só as três bolinhas
+                // permanecem por dez segundos.
+                if (!g_settingsSectionLingerActive)
+                {
+                    g_settingsSectionLingerRemaining = kSettingsSectionLingerDuration;
+                    g_settingsSectionLingerActive = true;
+                }
+
+                g_settingsSectionLingerRemaining = std::max(
+                    0.0f, g_settingsSectionLingerRemaining - deltaTime);
+                if (g_settingsSectionLingerRemaining <= 0.0f)
+                    CloseSettingsSectionMenu();
             }
         }
 
@@ -4129,29 +4218,39 @@ namespace Menu
         std::vector<GamepadMagnetTarget> targets;
         targets.reserve(64);
         std::uint64_t token = 1;
+        
         auto add = [&](const ImVec2& center, float radius) {
             AddGamepadMagnetTarget(targets, center, radius, token++);
         };
+        
         auto addRect = [&](const LayoutSliderHitbox& hitbox) {
             AddGamepadMagnetRect(targets, hitbox, token++);
         };
 
         const WheelLayout wheel = GetWheelLayout();
+        
         const float width = wheel.max.x - wheel.min.x;
+        
         const float height = wheel.max.y - wheel.min.y;
+        
         constexpr float lockRadius = 15.0f;
+        
         const ImVec2 topLock(wheel.min.x + width * 0.11f, wheel.min.y + height * 0.19f);
+        
         const ImVec2 bottomLock(wheel.min.x + width * 0.11f, wheel.min.y + height * 0.81f);
+        
         add(topLock, lockRadius);
         add(ImVec2(topLock.x, topLock.y + lockRadius + lockRadius * 0.5f + 12.0f), lockRadius * 0.5f);
         add(GetSettingsSideLockCenter(), lockRadius);
         add(GetSettingsSideMouseCenter(lockRadius), lockRadius * 0.5f);
         add(GetSettingsSideScrollCenter(lockRadius), lockRadius * 0.5f);
+        
         add(bottomLock, lockRadius);
         add(ImVec2(bottomLock.x, bottomLock.y - lockRadius - lockRadius * 0.5f - 12.0f), lockRadius * 0.5f);
         add(ImVec2(wheel.center.x, wheel.min.y + height * 0.93f), 12.0f);
 
         const SettingsSectionLayout section = GetSettingsSectionLayout();
+        
         add(section.gameplay, 18.0f);
         add(section.center, 18.0f);
         add(section.layout, 18.0f);
@@ -4170,48 +4269,66 @@ namespace Menu
             addRect(g_secondaryKeyResetHitbox);
             addRect({ g_altConfigKeyButtonMin, g_altConfigKeyButtonMax });
             addRect(g_altConfigKeyResetHitbox);
+        
             add(g_automaticArrowButtonCenter, g_automaticArrowButtonRadius);
+        
             for (const auto& hitbox : g_generalSliderHitboxes) addRect(hitbox);
             for (const auto& hitbox : g_generalResetHitboxes) addRect(hitbox);
+        
             addRect(g_resetAllConfigHitbox);
             addRect(g_settingsScrollbarHitbox);
         }
         else if (g_settingsSection == SettingsSection::Gameplay)
         {
+        
             addRect({ g_languageButtonMin, g_languageButtonMax });
+        
             add(g_slowTimeButtonCenter, std::max(12.0f, g_slowTimeButtonRadius));
+        
             for (const auto& center : g_slowTimeScopeCenters)
                 add(center, std::max(6.0f, g_slowTimeScopeRadius));
+        
             for (const auto& center : g_blurScopeCenters)
                 add(center, std::max(6.0f, g_blurScopeRadius));
+        
             addRect({ g_slowTimeSliderMin, g_slowTimeSliderMax });
             addRect(g_slowTimeResetHitbox);
             addRect({ g_radialShapeButtonMin, g_radialShapeButtonMax });
             addRect({ g_trackModeButtonMin, g_trackModeButtonMax });
             addRect({ g_trackEditorButtonMin, g_trackEditorButtonMax });
             addRect({ g_radialAnimationButtonMin, g_radialAnimationButtonMax });
+        
             for (const auto& option : g_radialShapeOptionHitboxes) addRect(option);
             for (const auto& option : g_radialAnimationOptionHitboxes) addRect(option);
             for (const auto& center : g_gameplayIconButtonCenters)
                 add(center, std::max(12.0f, g_gameplayIconButtonRadius));
+        
             add(g_fastDragButtonCenter, std::max(12.0f, g_fastDragButtonRadius));
+        
             if (IconCustom::HasValidConfiguration())
                 add(g_customIconsReloadCenter, std::max(8.0f, g_customIconsReloadRadius));
+        
             for (const auto& option : g_languageOptionHitboxes)
                 addRect({ option.min, option.max });
         }
         else if (g_settingsSection == SettingsSection::Layout)
         {
             for (const auto& hitbox : g_layoutGroupHitboxes) addRect(hitbox);
+        
             for (const auto& hitbox : g_layoutColorHitboxes) addRect(hitbox);
+        
             for (const auto& hitbox : g_layoutColorResetHitboxes) addRect(hitbox);
+        
             addRect(g_layoutColorPickerHitbox);
             addRect(g_fontFamilyButtonHitbox);
             addRect(g_fontFamilyResetHitbox);
+        
             add(g_gameplayPreviewButtonCenter, std::max(12.0f, g_gameplayPreviewButtonRadius));
             add(g_gameplayDescriptionButtonCenter, std::max(12.0f, g_gameplayDescriptionButtonRadius));
+        
             for (const auto& hitbox : g_layoutSliderHitboxes) addRect(hitbox);
             for (const auto& hitbox : g_layoutResetHitboxes) addRect(hitbox);
+        
             addRect(g_layoutScrollbarHitbox);
         }
         return targets;
@@ -4219,16 +4336,22 @@ namespace Menu
 
     static void ApplyGamepadSettingsMagnet(ImVec2& cursor, const ImVec2& movement)
     {
+        
         static std::uint64_t lastTarget = 0;
+        
         const auto targets = GetGamepadSettingsMagnetTargets();
+        
         const GamepadMagnetTarget* nearest = nullptr;
+        
         float nearestDistance = FLT_MAX;
+        
         for (const auto& target : targets)
         {
             const float dx = target.center.x - cursor.x;
             const float dy = target.center.y - cursor.y;
             const float distance = std::sqrt(dx * dx + dy * dy);
             const float reach = target.radius + 144.0f;
+        
             if (distance <= reach && distance < nearestDistance)
             {
                 nearest = &target;
@@ -4268,6 +4391,7 @@ namespace Menu
         const float reach = nearest->radius + 144.0f;
         const float proximity = 1.0f - std::clamp(nearestDistance / reach, 0.0f, 1.0f);
         const float pull = std::min(0.92f, 0.28f + 0.56f * proximity);
+        
         cursor.x += (nearest->center.x - cursor.x) * pull;
         cursor.y += (nearest->center.y - cursor.y) * pull;
 
@@ -4284,6 +4408,7 @@ namespace Menu
     void GamepadMoveCursor(float x, float y, bool rightStick)
     {
         constexpr float deadzone = 0.18f;
+        
         const float length = std::sqrt(x * x + y * y);
 
         if (!SettingsMenu::WheelSettingsMenu::IsOpen() && g_showWindow &&
@@ -4292,12 +4417,14 @@ namespace Menu
         {
             constexpr float selectThreshold = 0.55f;
             constexpr float releaseThreshold = 0.28f;
+        
             if (std::abs(y) > selectThreshold && std::abs(y) > std::abs(x))
             {
                 ClearTopBottomGamepadSelection(g_radialSide);
                 g_gamepadHorizontalSelectionLatch = 0;
                 return;
             }
+        
             if (std::abs(x) <= releaseThreshold)
             {
                 g_gamepadHorizontalSelectionLatch = 0;
@@ -4312,6 +4439,7 @@ namespace Menu
                     Gamepad::PulseItemSelection();
                 }
             }
+        
             return;
         }
 
@@ -4322,16 +4450,23 @@ namespace Menu
         }
 
         const float normalized = (length - deadzone) / (1.0f - deadzone);
+        
         const float speed = 22.0f * std::clamp(normalized, 0.0f, 1.0f) *
             std::clamp(Config::g_gamepadAnalogSensitivity, 0.25f, 3.0f);
+        
         const ImVec2 targetDelta(x / length * speed, -y / length * speed);
+        
         const float smoothFactor = LayoutLerp(
             1.0f, 0.08f, Config::g_gamepadAnalogSmooth);
+        
         g_gamepadAnalogSmoothedDelta.x +=
             (targetDelta.x - g_gamepadAnalogSmoothedDelta.x) * smoothFactor;
+        
         g_gamepadAnalogSmoothedDelta.y +=
             (targetDelta.y - g_gamepadAnalogSmoothedDelta.y) * smoothFactor;
+        
         const ImVec2 delta = g_gamepadAnalogSmoothedDelta;
+        
         const ImVec2 screen = Resolution::GetVirtualSize();
 
         if (SettingsMenu::WheelSettingsMenu::IsOpen())
@@ -4377,14 +4512,18 @@ namespace Menu
             {
                 const int visibleCount = std::min(
                     static_cast<int>(g_sideItems.size()), GetSideVisibleLimit());
+                
                 const ImVec2 selector(
                     g_radialOrigin.x + g_radialVector.x,
                     g_radialOrigin.y + g_radialVector.y);
+                
                 const int visibleIndex = GetSideRadialItem(
                     selector, g_radialOrigin, g_radialSide == RadialSide::Left,
                     visibleCount, MENU_INNER_RADIUS);
+                
                 const int selectedIndex = visibleIndex >= 0 && !g_sideItems.empty()
                     ? GetSideActualIndex(visibleIndex) : -1;
+                
                 if (selectedIndex >= 0 && selectedIndex != g_gamepadSideSelection)
                 {
                     g_gamepadSideSelection = selectedIndex;
@@ -4466,7 +4605,7 @@ namespace Menu
         Gamepad::PulseSelection();
         return true;
     }
-
+    //VAI TOMANDO!!!
     void GamepadShoulder(int direction)
     {
         if (direction == 0)
@@ -4643,6 +4782,11 @@ namespace Menu
             return;
 
         const auto focusSection = [&](SettingsSection section) {
+            if (g_settingsSection == SettingsSection::Layout &&
+                section != SettingsSection::Layout)
+            {
+                CloseLayoutPresetDialogs();
+            }
             g_settingsSection = section;
             g_settingsSectionExpanded = true;
             g_gamepadSettingsConfigNavigation = true;
@@ -4655,6 +4799,7 @@ namespace Menu
             ImGui::GetIO().MousePos = g_settingsMousePos;
             Gamepad::PulseSelection();
         };
+        
         const auto returnToRadial = [&]() {
             g_gamepadSettingsConfigNavigation = false;
             g_gamepadSettingsNavigationInPanel = false;
@@ -4717,9 +4862,11 @@ namespace Menu
         }
 
         RadialSide side = RadialSide::None;
+        
         if (vertical < 0) side = RadialSide::Top;
         else if (vertical > 0) side = RadialSide::Bottom;
         else if (horizontal < 0) side = RadialSide::Left;
+        
         if (side == RadialSide::None)
             return;
 
@@ -4742,15 +4889,20 @@ namespace Menu
             return;
 
         const RadialSide focus = g_gamepadSettingsRadialFocus;
+        
         std::vector<const SettingsItemHitbox*> candidates;
+        
         for (const auto& hitbox : g_settingsItemHitboxes)
         {
+        
             const bool sameRadial = focus == RadialSide::Left
                 ? hitbox.side == RadialSide::Left || hitbox.side == RadialSide::Right
                 : hitbox.side == focus;
+        
             if (sameRadial && !IsSettingsItemCoveredByControlPanel(hitbox.position, hitbox.radius))
                 candidates.push_back(&hitbox);
         }
+        
         if (candidates.empty())
             return;
 
@@ -4762,10 +4914,13 @@ namespace Menu
             static_cast<int>(g_sideItems.size()) > GetSideVisibleLimit())
         {
             g_radialSide = RadialSide::Left;
+        
             ScrollSideRadial(direction);
+        
             const ImVec2 anchor(
                 GetWheelLayout().leftRadial.x + GetSideRadialRadius(),
                 GetWheelLayout().leftRadial.y);
+        
             const auto* fixed = *std::min_element(candidates.begin(), candidates.end(),
                 [&](const auto* a, const auto* b) {
                     const float adx = a->position.x - anchor.x;
@@ -4774,17 +4929,22 @@ namespace Menu
                     const float bdy = b->position.y - anchor.y;
                     return adx * adx + ady * ady < bdx * bdx + bdy * bdy;
                 });
+        
             g_settingsMousePos = fixed->position;
         }
         else
         {
             const int count = static_cast<int>(candidates.size());
+        
             g_gamepadSettingsRadialItemIndex = g_gamepadSettingsRadialItemIndex < 0
                 ? (direction > 0 ? 0 : count - 1)
                 : WrapIndex(g_gamepadSettingsRadialItemIndex + direction, count);
+        
             g_settingsMousePos = candidates[g_gamepadSettingsRadialItemIndex]->position;
         }
+        
         ImGui::GetIO().MousePos = g_settingsMousePos;
+        
         Gamepad::PulseItemSelection();
     }
 
@@ -4858,76 +5018,109 @@ namespace Menu
         }
 
         std::vector<LayoutSliderHitbox> targets;
+        
         if (g_settingsSection == SettingsSection::Settings)
         {
+        
             LayoutSliderHitbox firstKey{};
+        
             firstKey.min = g_wheelKeyButtonMin;
+        
             firstKey.max = g_wheelKeyButtonMax;
+        
             targets.push_back(firstKey);
+        
             LayoutSliderHitbox secondKey{};
+        
             secondKey.min = g_secondaryKeyButtonMin;
+        
             secondKey.max = g_secondaryKeyButtonMax;
+        
             targets.push_back(secondKey);
+        
             LayoutSliderHitbox automatic{};
+        
             automatic.min = ImVec2(
                 g_automaticArrowButtonCenter.x - g_automaticArrowButtonRadius,
                 g_automaticArrowButtonCenter.y - g_automaticArrowButtonRadius);
+        
             automatic.max = ImVec2(
                 g_automaticArrowButtonCenter.x + g_automaticArrowButtonRadius,
                 g_automaticArrowButtonCenter.y + g_automaticArrowButtonRadius);
+        
             targets.push_back(automatic);
+        
             targets.insert(targets.end(),
                 g_generalSliderHitboxes.begin(), g_generalSliderHitboxes.end());
+        
             targets.push_back(g_resetAllConfigHitbox);
         }
         else if (g_settingsSection == SettingsSection::Gameplay)
         {
+        
             const auto addCircle = [&](const ImVec2& center, float radius) {
                 LayoutSliderHitbox hitbox{};
                 hitbox.min = ImVec2(center.x - radius, center.y - radius);
                 hitbox.max = ImVec2(center.x + radius, center.y + radius);
                 targets.push_back(hitbox);
             };
+        
             LayoutSliderHitbox language{};
             language.min = g_languageButtonMin;
             language.max = g_languageButtonMax;
             targets.push_back(language);
+        
             addCircle(g_slowTimeButtonCenter,
                 std::max(g_slowTimeButtonRadius, 18.0f));
+        
             for (const auto& center : g_slowTimeScopeCenters)
                 addCircle(center, std::max(g_slowTimeScopeRadius, 10.0f));
+        
             for (const auto& center : g_blurScopeCenters)
                 addCircle(center, std::max(g_blurScopeRadius, 10.0f));
+        
             targets.push_back({ g_slowTimeSliderMin, g_slowTimeSliderMax });
             targets.push_back(g_slowTimeResetHitbox);
+        
             for (const auto& center : g_gameplayIconButtonCenters)
                 addCircle(center, std::max(g_gameplayIconButtonRadius, 18.0f));
+        
             addCircle(g_fastDragButtonCenter,
                 std::max(g_fastDragButtonRadius, 18.0f));
+        
             if (IconCustom::HasValidConfiguration())
                 addCircle(g_customIconsReloadCenter, std::max(g_customIconsReloadRadius, 10.0f));
+        
             targets.push_back({ g_radialShapeButtonMin, g_radialShapeButtonMax });
             targets.push_back({ g_trackModeButtonMin, g_trackModeButtonMax });
             targets.push_back({ g_trackEditorButtonMin, g_trackEditorButtonMax });
             targets.push_back({ g_radialAnimationButtonMin, g_radialAnimationButtonMax });
+        
             addCircle(g_gameplayPreviewButtonCenter, 18.0f);
+        
             addCircle(g_gameplayDescriptionButtonCenter, 18.0f);
         }
+        
         if (targets.empty())
             return;
 
         g_gamepadSettingsNavigationIndex = std::clamp(
             g_gamepadSettingsNavigationIndex + (vertical > 0 ? 1 : vertical < 0 ? -1 : 0),
             0, static_cast<int>(targets.size()) - 1);
+        
         const auto& target = targets[g_gamepadSettingsNavigationIndex];
+        
         g_settingsMousePos = ImVec2(
             (target.min.x + target.max.x) * 0.5f,
             (target.min.y + target.max.y) * 0.5f);
+        
         if (horizontal != 0)
             g_settingsMousePos.x = std::clamp(
                 g_settingsMousePos.x + static_cast<float>(horizontal) * 18.0f,
                 target.min.x, target.max.x);
+        
         ImGui::GetIO().MousePos = g_settingsMousePos;
+        
         Gamepad::PulseSelection();
     }
 
@@ -18453,7 +18646,15 @@ namespace Menu
         // NOVO ITEM - FECHA O SELETOR
         // ========================================================
 
-        CloseSettingsSectionMenu();
+        if (SettingsMenu::WheelSettingsMenu::IsOpen() &&
+            (g_settingsSectionExpanded || g_settingsSectionOpenT > 0.05f))
+        {
+            CloseSettingsPanelKeepSectionShortcuts();
+        }
+        else
+        {
+            CloseSettingsSectionMenu();
+        }
 
         // ========================================================
         // ATUALIZA A IDENTIFICAÇÃO
@@ -21045,38 +21246,72 @@ namespace Menu
 
         DrawTextWithShadow(draw, ImVec2(x, selectorY), white,
             Language::Get("radial_system").c_str(), alpha);
+        
         const float mechanismY = selectorY + selectorLabelGap + 16.0f * controlScale;
+        
         const float editorGap = 12.0f * controlScale;
+        
         const float editorWidth = 104.0f * controlScale;
+        
         g_trackModeButtonMin = ImVec2(x, mechanismY - 17.0f * controlScale);
+        
         g_trackModeButtonMax = ImVec2(x + width - editorWidth - editorGap,
             mechanismY + 17.0f * controlScale);
+        
         g_trackEditorButtonMin = ImVec2(g_trackModeButtonMax.x + editorGap,
             mechanismY - 17.0f * controlScale);
+        
         g_trackEditorButtonMax = ImVec2(x + width, mechanismY + 17.0f * controlScale);
+        
         const auto drawModeButton = [&](const ImVec2& min, const ImVec2& max,
             const char* text, bool active, bool transparent = false) {
-            if (!transparent)
-                draw->AddRectFilled(min, max, FadeColor(active ?
-                    IM_COL32(190, 180, 155, 235) : IM_COL32(25, 26, 31, 235), alpha),
+            const bool hovered =
+                g_settingsMousePos.x >= min.x && g_settingsMousePos.x <= max.x &&
+                g_settingsMousePos.y >= min.y && g_settingsMousePos.y <= max.y;
+        
+            if (!transparent || hovered)
+            {
+                const ImU32 background = transparent
+                    ? IM_COL32(65, 65, 70, 235)
+                    : active
+                    ? (hovered ? IM_COL32(225, 213, 178, 250)
+                               : IM_COL32(190, 180, 155, 235))
+                    : (hovered ? IM_COL32(65, 65, 70, 235) //preto/cinza
+                               : IM_COL32(25, 26, 31, 235));
+                draw->AddRectFilled(min, max, FadeColor(background, alpha),
                     4.0f * controlScale);
-            draw->AddRect(min, max, FadeColor(IM_COL32(190, 185, 170, 175), alpha),
-                4.0f * controlScale, 0, 1.2f);
+            }
+        
+            draw->AddRect(min, max,
+                FadeColor(hovered && (transparent || !active)
+                                  ? IM_COL32(255, 255, 255, 190)
+                                  : hovered ? IM_COL32(245, 228, 180, 250)
+                                  : IM_COL32(190, 185, 170, 175), alpha),
+                4.0f * controlScale, 0, hovered ? 1.8f : 1.2f);
             const ImVec2 textSize = ImGui::CalcTextSize(text);
+            
             DrawTextWithShadow(draw, ImVec2((min.x + max.x - textSize.x) * 0.5f,
-                (min.y + max.y - textSize.y) * 0.5f), white, text, alpha);
+                (min.y + max.y - textSize.y) * 0.5f),
+                active && (!transparent || hovered)
+                    ? IM_COL32(215, 195, 150, 255) : white, text, alpha);
         };
+        
         const bool customUsable = Config::g_customRadial && Track::HasValidSavedLayout();
+        
         drawModeButton(g_trackModeButtonMin, g_trackModeButtonMax,
             Config::g_customRadial ? "CUSTOM" : "LEGACY", customUsable,
             Config::g_customRadial);
+        
         drawModeButton(g_trackEditorButtonMin, g_trackEditorButtonMax, "EDITOR", false);
+        
         if (Config::g_customRadial && !Track::HasValidSavedLayout())
         {
             const char* fallback = "Invalid custom layout - Legacy fallback";
+        
             DrawTextWithShadow(draw, ImVec2(x, g_trackModeButtonMax.y + 4.0f),
                 FadeColor(IM_COL32(225, 145, 125, 255), alpha), fallback, alpha);
         }
+        
         selectorY = g_trackModeButtonMax.y + 20.0f * controlScale;
 
         drawSelector(Language::Get("radial_animation").c_str(), Config::g_radialAnimation,
@@ -21112,36 +21347,52 @@ namespace Menu
             &Config::g_coloredMagicSchools,
             &Config::g_coloredItemEnchants
         };
+
         const std::array<const char*, 4> iconLabels{
             "custom_icons",
             "colored_potions",
             "colored_magic_schools",
             "color_item_enchants"
         };
+        
         const float iconsOptionStartY = iconsTitleY + 32.0f * controlScale;
+        
         const float iconsOptionSpacing = 32.0f * controlScale;
+        
         g_gameplayIconButtonRadius = buttonRadius;
+        
         const bool customIconsAvailable = IconCustom::HasValidConfiguration();
+        
         for (std::size_t i = 0; i < iconSettings.size(); ++i)
         {
             const float optionCenterY = iconsOptionStartY + iconsOptionSpacing * static_cast<float>(i);
+            
             g_gameplayIconButtonCenters[i] = ImVec2(x + 13.0f * controlScale, optionCenterY);
+            
             const float iconDx = g_settingsMousePos.x - g_gameplayIconButtonCenters[i].x;
+            
             const float iconDy = g_settingsMousePos.y - g_gameplayIconButtonCenters[i].y;
+            
             const bool optionEnabled = i != 0 || customIconsAvailable;
+            
             const bool iconHovered = optionEnabled &&
                 iconDx * iconDx + iconDy * iconDy <= buttonRadius * buttonRadius;
-            g_gameplayIconButtonHoverT[i] = AnimateSettingsValue(
+            
+                g_gameplayIconButtonHoverT[i] = AnimateSettingsValue(
                 g_gameplayIconButtonHoverT[i], iconHovered ? 1.0f : 0.0f, 12.0f, ImGui::GetIO().DeltaTime);
+            
             const ImU32 iconBackground = !optionEnabled ? IM_COL32(18, 18, 23, 115) : *iconSettings[i]
                 ? IM_COL32(235, 235, 235, 140) : IM_COL32(20, 20, 25, 235);
+            
             draw->AddCircleFilled(g_gameplayIconButtonCenters[i],
                 buttonRadius + g_gameplayIconButtonHoverT[i] * 2.0f,
                 FadeColor(iconBackground, alpha), 48);
+            
             draw->AddCircle(g_gameplayIconButtonCenters[i],
                 buttonRadius + g_gameplayIconButtonHoverT[i] * 2.0f,
                 FadeColor(IM_COL32(255, 255, 255,
                     static_cast<int>(90.0f + 140.0f * g_gameplayIconButtonHoverT[i])), alpha), 48, 1.5f);
+            
             DrawTextWithShadow(draw,
                 ImVec2(g_gameplayIconButtonCenters[i].x + buttonRadius + 12.0f,
                     optionCenterY - ImGui::GetFontSize() * 0.5f),
@@ -21151,39 +21402,50 @@ namespace Menu
             if (i == 0)
             {
                 g_customIconsReloadCenter = ImVec2(x + width - 10.0f * controlScale, optionCenterY);
+            
                 g_customIconsReloadRadius = 7.0f * controlScale;
+            
                 const float reloadDx = g_settingsMousePos.x - g_customIconsReloadCenter.x;
+            
                 const float reloadDy = g_settingsMousePos.y - g_customIconsReloadCenter.y;
+            
                 const bool reloadHovered = customIconsAvailable &&
                     reloadDx * reloadDx + reloadDy * reloadDy <=
                         g_customIconsReloadRadius * g_customIconsReloadRadius;
                 g_customIconsReloadHoverT = AnimateSettingsValue(g_customIconsReloadHoverT,
                     reloadHovered ? 1.0f : 0.0f, 12.0f, ImGui::GetIO().DeltaTime);
+            
                 const int reloadAlpha = customIconsAvailable
                     ? static_cast<int>(95.0f + 145.0f * g_customIconsReloadHoverT) : 45;
+            
                 draw->AddCircleFilled(g_customIconsReloadCenter,
                     g_customIconsReloadRadius + g_customIconsReloadHoverT,
                     FadeColor(IM_COL32(245, 245, 245, reloadAlpha), alpha), 24);
+            
                 draw->AddCircle(g_customIconsReloadCenter,
                     g_customIconsReloadRadius + g_customIconsReloadHoverT,
                     FadeColor(IM_COL32(255, 255, 255, reloadAlpha), alpha), 24, 1.0f);
+            
                 const ImVec2 arrowA(g_customIconsReloadCenter.x - 2.0f * controlScale,
                     g_customIconsReloadCenter.y - 2.0f * controlScale);
+            
                 const ImVec2 arrowB(g_customIconsReloadCenter.x + 3.0f * controlScale,
                     g_customIconsReloadCenter.y + 2.0f * controlScale);
-                draw->AddLine(arrowA, arrowB, FadeColor(IM_COL32(30, 30, 34, 235), alpha), 1.2f);
-                draw->AddTriangleFilled(ImVec2(arrowB.x, arrowB.y),
-                    ImVec2(arrowB.x - 3.0f * controlScale, arrowB.y - 1.0f * controlScale),
-                    ImVec2(arrowB.x - 1.0f * controlScale, arrowB.y - 3.0f * controlScale),
-                    FadeColor(IM_COL32(30, 30, 34, 235), alpha));
+                //draw->AddLine(arrowA, arrowB, FadeColor(IM_COL32(30, 30, 34, 235), alpha), 1.2f);
+                //draw->AddTriangleFilled(ImVec2(arrowB.x, arrowB.y),
+                //    ImVec2(arrowB.x - 3.0f * controlScale, arrowB.y - 1.0f * controlScale),
+                //    ImVec2(arrowB.x - 1.0f * controlScale, arrowB.y - 3.0f * controlScale),
+                //    FadeColor(IM_COL32(30, 30, 34, 235), alpha));
                 customIconsReloadTooltip = reloadHovered;
             }
         }
 
         DrawTextWithShadow(draw, ImVec2(x, inventoryTitleY), gold,
             Language::Get("inventory_section").c_str(), alpha);
+        
         const ImVec2 inventoryTitleSize = ImGui::CalcTextSize(
             Language::Get("inventory_section").c_str());
+        
         draw->AddLine(
             ImVec2(x + inventoryTitleSize.x + 12.0f * controlScale,
                 inventoryTitleY + ImGui::GetFontSize() * 0.5f),
@@ -21191,30 +21453,40 @@ namespace Menu
             FadeColor(IM_COL32(215, 195, 150, 90), alpha), 1.0f);
 
         g_fastDragButtonRadius = buttonRadius;
+        
         g_fastDragButtonCenter = ImVec2(x + 13.0f * controlScale, fastDragOptionY);
+        
         const float fastDragDx = g_settingsMousePos.x - g_fastDragButtonCenter.x;
+        
         const float fastDragDy = g_settingsMousePos.y - g_fastDragButtonCenter.y;
+        
         const bool fastDragHovered = fastDragDx * fastDragDx + fastDragDy * fastDragDy <=
             buttonRadius * buttonRadius;
+        
         g_fastDragButtonHoverT = AnimateSettingsValue(g_fastDragButtonHoverT,
             fastDragHovered ? 1.0f : 0.0f, 12.0f, ImGui::GetIO().DeltaTime);
+        
         draw->AddCircleFilled(g_fastDragButtonCenter,
             buttonRadius + g_fastDragButtonHoverT * 2.0f,
             FadeColor(Config::g_fastInventoryDrag
                 ? IM_COL32(235, 235, 235, 140)
                 : IM_COL32(20, 20, 25, 235), alpha), 48);
+        
         draw->AddCircle(g_fastDragButtonCenter,
             buttonRadius + g_fastDragButtonHoverT * 2.0f,
             FadeColor(IM_COL32(255, 255, 255,
                 static_cast<int>(90.0f + 140.0f * g_fastDragButtonHoverT)), alpha),
             48, 1.5f);
+        
         DrawTextWithShadow(draw,
             ImVec2(g_fastDragButtonCenter.x + buttonRadius + 12.0f,
                 fastDragOptionY - ImGui::GetFontSize() * 0.5f),
             white, Language::Get("fast_drag").c_str(), alpha);
 
         g_languageButtonMin = ImVec2(x, languageY);
+        
         g_languageButtonMax = ImVec2(x + width, languageY + languageButtonHeight);
+        
         const bool languageHovered =
             g_settingsMousePos.x >= g_languageButtonMin.x &&
             g_settingsMousePos.x <= g_languageButtonMax.x &&
@@ -21225,6 +21497,7 @@ namespace Menu
             FadeColor(languageHovered || g_languageListOpen
                 ? IM_COL32(65, 65, 70, 235)
                 : IM_COL32(20, 20, 25, 235), alpha), 5.0f * controlScale);
+        
         draw->AddRect(g_languageButtonMin, g_languageButtonMax,
             FadeColor(IM_COL32(255, 255, 255,
                 languageHovered || g_languageListOpen ? 190 : 85), alpha),
@@ -21232,7 +21505,9 @@ namespace Menu
 
         const std::string languageText = std::format("{}: {}",
             Language::Get("language"), Language::GetCurrentName());
+        
         const ImVec2 languageTextSize = ImGui::CalcTextSize(languageText.c_str());
+        
         DrawTextWithShadow(draw,
             ImVec2((g_languageButtonMin.x + g_languageButtonMax.x - languageTextSize.x) * 0.5f,
                 (g_languageButtonMin.y + g_languageButtonMax.y - languageTextSize.y) * 0.5f),
@@ -21240,6 +21515,7 @@ namespace Menu
             languageText.c_str(), alpha);
 
         g_languageOptionHitboxes.clear();
+        
         if (g_languageListOpen)
         {
             const auto& languages = Language::GetAvailableLanguages();
@@ -21261,16 +21537,22 @@ namespace Menu
                     option.min = ImVec2(g_languageButtonMin.x,
                         g_languageButtonMax.y + 4.0f * controlScale +
                             optionHeight * static_cast<float>(i));
+        
                     option.max = ImVec2(g_languageButtonMax.x, option.min.y + optionHeight);
+        
                     option.language = languages[i];
+        
                     const bool optionHovered =
                         g_settingsMousePos.x >= option.min.x && g_settingsMousePos.x <= option.max.x &&
                         g_settingsMousePos.y >= option.min.y && g_settingsMousePos.y <= option.max.y;
+        
                     draw->AddRectFilled(option.min, option.max,
                         FadeColor(optionHovered
                             ? IM_COL32(75, 75, 82, 245)
                             : IM_COL32(18, 18, 23, 245), alpha), 3.0f * controlScale);
+        
                     const ImVec2 optionTextSize = ImGui::CalcTextSize(option.language.c_str());
+        
                     DrawTextWithShadow(draw,
                         ImVec2((option.min.x + option.max.x - optionTextSize.x) * 0.5f,
                             (option.min.y + option.max.y - optionTextSize.y) * 0.5f),
@@ -21282,13 +21564,17 @@ namespace Menu
         }
 
         draw->PopClipRect();
+        
         const float gameplayContentHeight =
             fastDragOptionY + buttonRadius + 20.0f * controlScale +
             g_gameplayPanelScroll - gameplayContentTop;
+        
         const float gameplayVisibleHeight = std::max(
             gameplayContentBottom - gameplayContentTop, 1.0f);
+        
         g_gameplayPanelMaxScroll = std::max(
             0.0f, gameplayContentHeight - gameplayVisibleHeight + 10.0f * controlScale);
+        
         g_gameplayPanelScroll = std::clamp(
             g_gameplayPanelScroll, 0.0f, g_gameplayPanelMaxScroll);
 
@@ -21296,20 +21582,26 @@ namespace Menu
             ImVec2(gameplayScrollbarX - 2.0f * controlScale, gameplayContentTop),
             ImVec2(gameplayScrollbarX + 2.0f * controlScale, gameplayContentBottom),
             FadeColor(IM_COL32(30, 31, 36, 220), alpha), 3.0f * controlScale);
+        
         const float gameplayThumbHeight = std::max(
             22.0f * controlScale,
             gameplayVisibleHeight * std::clamp(
                 gameplayVisibleHeight / std::max(gameplayContentHeight, 1.0f), 0.0f, 1.0f));
+        
         const float gameplayThumbTravel = std::max(
             0.0f, gameplayVisibleHeight - gameplayThumbHeight);
+        
         const float gameplayScrollT = g_gameplayPanelMaxScroll > 0.0f
             ? g_gameplayPanelScroll / g_gameplayPanelMaxScroll : 0.0f;
+        
         const float gameplayThumbTop = gameplayContentTop + gameplayThumbTravel * gameplayScrollT;
+        
         const bool gameplayScrollbarHovered =
             g_settingsMousePos.x >= g_gameplayScrollbarHitbox.min.x &&
             g_settingsMousePos.x <= g_gameplayScrollbarHitbox.max.x &&
             g_settingsMousePos.y >= g_gameplayScrollbarHitbox.min.y &&
             g_settingsMousePos.y <= g_gameplayScrollbarHitbox.max.y;
+        
         draw->AddRectFilled(
             ImVec2(gameplayScrollbarX - 4.0f * controlScale, gameplayThumbTop),
             ImVec2(gameplayScrollbarX + 4.0f * controlScale,
@@ -21321,21 +21613,31 @@ namespace Menu
         if (customIconsReloadTooltip)
         {
             const auto reloadText = Language::Get("reload");
+        
             const ImVec2 textSize = ImGui::CalcTextSize(reloadText.c_str());
+        
             const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+        
             const float tooltipPadding = 8.0f * controlScale;
+        
             ImVec2 tooltipMin(g_settingsMousePos.x + 13.0f * controlScale,
                 g_settingsMousePos.y + 13.0f * controlScale);
+        
             tooltipMin.x = std::clamp(tooltipMin.x, 4.0f,
                 std::max(4.0f, displaySize.x - textSize.x - tooltipPadding * 2.0f - 4.0f));
+        
             tooltipMin.y = std::clamp(tooltipMin.y, 4.0f,
                 std::max(4.0f, displaySize.y - textSize.y - tooltipPadding * 2.0f - 4.0f));
+        
             const ImVec2 tooltipMax(tooltipMin.x + textSize.x + tooltipPadding * 2.0f,
                 tooltipMin.y + textSize.y + tooltipPadding * 2.0f);
+        
             draw->AddRectFilled(tooltipMin, tooltipMax,
                 FadeColor(IM_COL32(13, 14, 18, 248), alpha), 4.0f * controlScale);
+        
             draw->AddRect(tooltipMin, tooltipMax,
                 FadeColor(IM_COL32(190, 185, 170, 180), alpha), 4.0f * controlScale);
+        
             DrawTextWithShadow(draw, ImVec2(tooltipMin.x + tooltipPadding,
                 tooltipMin.y + tooltipPadding), white, reloadText.c_str(), alpha);
         }
@@ -21344,15 +21646,24 @@ namespace Menu
     static void DrawSettingsLayoutPanel(float alpha)
     {
         ImDrawList* draw = ImGui::GetForegroundDrawList();
+        
         const char* previewButtonTooltip = nullptr;
+        
         const SettingsInfoPanel panel = GetSettingsInfoPanel(ImGui::GetIO().DisplaySize);
+        
         const float controlScale = 1.0f +
             (std::clamp(Config::g_fontSizeScale, 1.0f, 2.5f) - 1.0f) * (2.0f / 3.0f);
+        
         const float padding = 10.0f * controlScale;
+        
         const float x = panel.min.x + padding;
+        
         const float y = panel.min.y + padding;
+        
         const float scrollbarWidth = 12.0f * controlScale;
+        
         const float width = panel.width - padding * 2.0f;
+        
         if (width <= 0.0f)
             return;
 
@@ -21361,8 +21672,10 @@ namespace Menu
             DrawTextWithShadow(draw, ImVec2(x, y),
                 FadeColor(IM_COL32(215, 195, 150, 255), alpha), Language::Get("layout").c_str(), alpha);
         }
+        
         draw->AddLine(ImVec2(x, y + 29.0f * controlScale), ImVec2(x + width, y + 29.0f * controlScale),
             FadeColor(IM_COL32(215, 195, 150, 90), alpha), 1.0f);
+        
         struct SliderData
         {
             const char* label;
@@ -21464,39 +21777,62 @@ namespace Menu
             { Language::Get("preview_ingredient_size_multiplier").c_str(), &Config::g_itemPreviewCategoryMultipliers[9], 0.2f, 3.0f },
             { Language::Get("preview_scroll_size_multiplier").c_str(), &Config::g_itemPreviewCategoryMultipliers[10], 0.2f, 3.0f }
         };
+        
         const float rowHeight = std::max(45.0f * controlScale,
             ImGui::GetFontSize() + 25.0f * controlScale);
+        
         const float trackHeight = 14.0f * controlScale;
+        
         const float resetRadius = 5.0f * controlScale;
+        
         const float resetAreaWidth = 24.0f * controlScale;
+        
         const float trackMinX = x;
+        
         const float trackMaxX = x + width - resetAreaWidth;
+        
         const float dt = std::clamp(ImGui::GetIO().DeltaTime, 0.0f, 0.05f);
 
         g_layoutSliderRows.fill(-1);
+        
         g_layoutSliderVisible.fill(false);
+        
         int nextRow = 0;
+        
         const auto addSliderRow = [&](LayoutSlider slider) {
             const std::size_t index = static_cast<std::size_t>(slider);
             g_layoutSliderRows[index] = nextRow++;
             g_layoutSliderVisible[index] = true;
         };
+        
         const auto groupExpanded = [](LayoutGroup group) {
             return g_layoutGroupExpanded[static_cast<std::size_t>(group)];
         };
 
         const int presetButtonsRow = nextRow++;
+        
         const int presetNameRow = g_layoutNameOpen ? nextRow++ : -1;
+        
         const int presetNameActionsRow = g_layoutNameOpen ? nextRow++ : -1;
+        
         const std::vector<std::string> layoutPresets = g_layoutLoadOpen
             ? Config::LayoutPresets() : std::vector<std::string>{};
+        
         const int presetListFirstRow = g_layoutLoadOpen ? nextRow : -1;
+        
         if (g_layoutLoadOpen) nextRow += std::max(1, static_cast<int>(layoutPresets.size()));
+        
         addSliderRow(LayoutSlider::FontSize);
+        
         const int fontButtonRow = nextRow++;
+        
         std::array<int, 4> itemToggleRows{ -1, -1, -1, -1 };
+        
         for (int& row : itemToggleRows) row = nextRow++;
+        
+
         const int itemPreviewHeaderRow = nextRow++;
+        
         int previewMenuHeaderRow = -1;
         int previewTopHeaderRow = -1;
         int previewBottomHeaderRow = -1;
@@ -21528,13 +21864,20 @@ namespace Menu
         int potionsTitleRow = -1;
         int schoolsTitleRow = -1;
         int enchantsTitleRow = -1;
+        
         std::array<int, 7> potionColorRows{};
+        
         std::array<int, 8> schoolColorRows{};
+        
         std::array<int, 5> enchantColorRows{};
+        
+        
         potionColorRows.fill(-1);
         schoolColorRows.fill(-1);
         enchantColorRows.fill(-1);
+        
         int colorPickerRow = -1;
+        
         const auto addColorRow = [&](LayoutColorControl control, int& row) {
             row = nextRow++;
             if (g_openLayoutColor == static_cast<int>(control))
@@ -21543,6 +21886,7 @@ namespace Menu
                 nextRow += 3;
             }
         };
+        
         if (groupExpanded(LayoutGroup::ItemPreview))
         {
             const auto addPreviewRows = [&](LayoutSlider first) {
@@ -21693,18 +22037,28 @@ namespace Menu
 
         // The first six controls remain visible; sections below are reached
         // by wheel or by the vertical scrollbar on the right.
+        
         const float contentTop = y + 40.0f * controlScale;
+        
         const float contentBottom =
             GetSettingsPanelContentBottom(panel, padding);
+        
         const float visibleContentHeight = std::max(1.0f, contentBottom - contentTop);
+        
         const float totalContentHeight = rowHeight * static_cast<float>(nextRow + 1);
+        
         g_layoutPanelMaxScroll = std::max(0.0f, totalContentHeight - visibleContentHeight);
+        
         g_layoutPanelScroll = std::clamp(g_layoutPanelScroll, 0.0f, g_layoutPanelMaxScroll);
 
         const float scrollbarX = panel.max.x + 6.0f * controlScale;
+        
         const float scrollbarTop = contentTop;
+        
         const float scrollbarBottom = contentBottom;
+        
         g_layoutScrollbarHitbox.min = ImVec2(scrollbarX - 8.0f * controlScale, scrollbarTop);
+        
         g_layoutScrollbarHitbox.max = ImVec2(scrollbarX + 8.0f * controlScale, scrollbarBottom);
 
         if (g_layoutScrollbarDragging && g_layoutPanelMaxScroll > 0.0f)
@@ -21724,11 +22078,13 @@ namespace Menu
         const auto hiddenHitbox = [] {
             return LayoutSliderHitbox{ ImVec2(1.0f, 1.0f), ImVec2(0.0f, 0.0f) };
         };
+        
         const auto rowRect = [&](int row) {
             const float rowTop = contentTop + rowHeight * static_cast<float>(row) - g_layoutPanelScroll;
             return LayoutSliderHitbox{ ImVec2(x, rowTop + 5.0f * controlScale),
                 ImVec2(x + width, rowTop + rowHeight - 5.0f * controlScale) };
         };
+        
         const auto drawLargeButton = [&](LayoutSliderHitbox& hitbox, const LayoutSliderHitbox& bounds,
             const char* label, bool active = false) {
             hitbox = bounds;
@@ -21740,14 +22096,16 @@ namespace Menu
             const bool hovered = g_settingsMousePos.x >= bounds.min.x && g_settingsMousePos.x <= bounds.max.x &&
                 g_settingsMousePos.y >= bounds.min.y && g_settingsMousePos.y <= bounds.max.y;
             draw->AddRectFilled(bounds.min, bounds.max,
-                FadeColor(active ? IM_COL32(225, 218, 200, 220) :
-                    hovered ? IM_COL32(72, 73, 79, 235) : IM_COL32(42, 43, 49, 225), alpha), 5.0f * controlScale);
+                FadeColor(active ? IM_COL32(235, 235, 235, 70) :
+                    hovered ? IM_COL32(65, 65, 70, 235) : IM_COL32(20, 20, 25, 235), alpha), 5.0f * controlScale);
             draw->AddRect(bounds.min, bounds.max,
-                FadeColor(IM_COL32(185, 176, 154, hovered ? 220 : 125), alpha), 5.0f * controlScale);
+                FadeColor(active ? IM_COL32(215, 195, 150, 235) :
+                    IM_COL32(255, 255, 255, hovered ? 190 : 85), alpha), 5.0f * controlScale);
             const ImVec2 size = ImGui::CalcTextSize(label);
             DrawTextWithShadow(draw, ImVec2((bounds.min.x + bounds.max.x - size.x) * 0.5f,
                 (bounds.min.y + bounds.max.y - size.y) * 0.5f),
-                FadeColor(active ? IM_COL32(25, 25, 28, 255) : IM_COL32(235, 230, 215, 255), alpha), label, alpha);
+                FadeColor(active ? IM_COL32(215, 195, 150, 255)
+                                 : IM_COL32(235, 230, 215, 255), alpha), label, alpha);
         };
         {
             const auto row = rowRect(presetButtonsRow);
@@ -21758,8 +22116,12 @@ namespace Menu
             drawLargeButton(g_layoutLoadButtonHitbox,
                 { ImVec2(row.min.x + half + gap, row.min.y), row.max }, Language::Get("load_layout").c_str(), g_layoutLoadOpen);
         }
+        
+        
         g_layoutNameOkHitbox = hiddenHitbox();
+        
         g_layoutNameCancelHitbox = hiddenHitbox();
+        
         if (presetNameRow >= 0)
         {
             const auto field = rowRect(presetNameRow);
@@ -21778,7 +22140,10 @@ namespace Menu
             drawLargeButton(g_layoutNameCancelHitbox,
                 { ImVec2(actions.min.x + half + gap, actions.min.y), actions.max }, Language::Get("cancel").c_str());
         }
+        
+        
         g_layoutPresetHitboxes.clear();
+        
         if (g_layoutLoadOpen)
         {
             if (layoutPresets.empty())
@@ -21834,6 +22199,7 @@ namespace Menu
 
         for (auto& hitbox : g_layoutGroupHitboxes)
             hitbox = { ImVec2(1.0f, 1.0f), ImVec2(0.0f, 0.0f) };
+        
         const auto drawSectionTitle = [&](int row, const char* title,
             LayoutGroup group, float indent = 0.0f) {
             if (row < 0) return;
@@ -21852,6 +22218,7 @@ namespace Menu
             const bool expanded = groupExpanded(group);
             const float arrowX = titleX + 5.0f * controlScale;
             const float arrowY = titleY + ImGui::GetFontSize() * 0.52f;
+        
             if (expanded)
             {
                 draw->AddTriangleFilled(
@@ -21868,16 +22235,22 @@ namespace Menu
                     ImVec2(arrowX + 3.0f * controlScale, arrowY),
                     FadeColor(IM_COL32(215, 195, 150, hovered ? 255 : 190), alpha));
             }
+        
             const float textX = titleX + 16.0f * controlScale;
+        
             DrawTextWithShadow(draw, ImVec2(textX, titleY),
                 FadeColor(IM_COL32(215, 195, 150, 235), alpha), title, alpha);
+        
             const ImVec2 titleSize = ImGui::CalcTextSize(title);
+        
             draw->AddLine(ImVec2(textX + titleSize.x + 10.0f * controlScale, titleY + ImGui::GetFontSize() * 0.55f),
                 ImVec2(x + width, titleY + ImGui::GetFontSize() * 0.55f),
                 FadeColor(IM_COL32(215, 195, 150, 75), alpha), 1.0f);
         };
+        
         drawSectionTitle(itemPreviewHeaderRow, Language::Get("item_section").c_str(),
             LayoutGroup::ItemPreview);
+        
         if (groupExpanded(LayoutGroup::ItemPreview))
         {
             drawSectionTitle(previewMenuHeaderRow, Language::Get("preview_menu_section").c_str(),
@@ -21891,8 +22264,10 @@ namespace Menu
             drawSectionTitle(previewLeftHeaderRow, Language::Get("left_section").c_str(),
                 LayoutGroup::PreviewLeft, 14.0f * controlScale);
         }
+        
         drawSectionTitle(itemRadialHeaderRow, Language::Get("radial_section").c_str(),
             LayoutGroup::ItemRadial);
+        
         if (groupExpanded(LayoutGroup::ItemRadial))
         {
             drawSectionTitle(itemSlotHeaderRow, Language::Get("slot_section").c_str(),
@@ -21900,8 +22275,10 @@ namespace Menu
             drawSectionTitle(itemIconHeaderRow, Language::Get("icon_section").c_str(),
                 LayoutGroup::ItemIcon, 14.0f * controlScale);
         }
+        
         drawSectionTitle(itemTopHeaderRow, Language::Get("top_section").c_str(),
             LayoutGroup::ItemTop);
+        
         if (groupExpanded(LayoutGroup::ItemTop))
         {
             drawSectionTitle(itemTopSlotHeaderRow, Language::Get("slot_section").c_str(),
@@ -21909,8 +22286,10 @@ namespace Menu
             drawSectionTitle(itemTopIconHeaderRow, Language::Get("icon_section").c_str(),
                 LayoutGroup::ItemTopIcon, 14.0f * controlScale);
         }
+        
         drawSectionTitle(itemBottomHeaderRow, Language::Get("bottom_section").c_str(),
             LayoutGroup::ItemBottom);
+        
         if (groupExpanded(LayoutGroup::ItemBottom))
         {
             drawSectionTitle(itemBottomSlotHeaderRow, Language::Get("slot_section").c_str(),
@@ -21918,10 +22297,13 @@ namespace Menu
             drawSectionTitle(itemBottomIconHeaderRow, Language::Get("icon_section").c_str(),
                 LayoutGroup::ItemBottomIcon, 14.0f * controlScale);
         }
+        
         drawSectionTitle(itemOverflowHeaderRow, Language::Get("overflow_section").c_str(),
             LayoutGroup::ItemOverflow);
+        
         drawSectionTitle(itemColorsHeaderRow, Language::Get("colors_section").c_str(),
             LayoutGroup::ItemColors);
+        
         const auto drawPlainTitle = [&](int row, const char* title) {
             if (row < 0) return;
             const float titleY = contentTop + rowHeight * static_cast<float>(row) -
@@ -21934,54 +22316,75 @@ namespace Menu
                 ImVec2(x + width, titleY + ImGui::GetFontSize() * 0.55f),
                 FadeColor(IM_COL32(215, 195, 150, 60), alpha), 1.0f);
         };
+        
         drawPlainTitle(potionsTitleRow, Language::Get("potions_title").c_str());
+        
         drawPlainTitle(schoolsTitleRow, Language::Get("schools_title").c_str());
+        
         drawPlainTitle(enchantsTitleRow, Language::Get("enchants_title").c_str());
 
         const float fontButtonY = contentTop + 8.0f * controlScale - g_layoutPanelScroll +
             rowHeight * static_cast<float>(fontButtonRow);
+        
         const float fontResetArea = 28.0f * controlScale;
+        
         g_fontFamilyButtonHitbox.min = ImVec2(x, fontButtonY);
+        
         g_fontFamilyButtonHitbox.max = ImVec2(
             x + width - fontResetArea, fontButtonY + 32.0f * controlScale);
+        
         const ImVec2 fontResetCenter(
             x + width - 7.0f * controlScale,
             fontButtonY + 16.0f * controlScale);
+        
         g_fontFamilyResetHitbox.min = ImVec2(
             fontResetCenter.x - 10.0f * controlScale,
             fontResetCenter.y - 10.0f * controlScale);
+        
         g_fontFamilyResetHitbox.max = ImVec2(
             fontResetCenter.x + 10.0f * controlScale,
             fontResetCenter.y + 10.0f * controlScale);
+        
         Config::g_fontFamily = std::clamp(Config::g_fontFamily, 0, Font::Count() - 1);
+        
         const bool fontHovered =
             g_settingsMousePos.x >= g_fontFamilyButtonHitbox.min.x &&
             g_settingsMousePos.x <= g_fontFamilyButtonHitbox.max.x &&
             g_settingsMousePos.y >= g_fontFamilyButtonHitbox.min.y &&
             g_settingsMousePos.y <= g_fontFamilyButtonHitbox.max.y;
+        
         draw->AddRectFilled(g_fontFamilyButtonHitbox.min, g_fontFamilyButtonHitbox.max,
             FadeColor(fontHovered ? IM_COL32(65, 65, 70, 235) : IM_COL32(20, 20, 25, 235), alpha),
             5.0f * controlScale);
+        
         draw->AddRect(g_fontFamilyButtonHitbox.min, g_fontFamilyButtonHitbox.max,
             FadeColor(IM_COL32(255, 255, 255, fontHovered ? 190 : 85), alpha),
             5.0f * controlScale, 0, 1.5f);
+        
         const char* fontName = Font::Name(Config::g_fontFamily);
+        
         const ImVec2 fontNameSize = ImGui::CalcTextSize(fontName);
+        
         DrawTextWithShadow(draw,
             ImVec2((g_fontFamilyButtonHitbox.min.x + g_fontFamilyButtonHitbox.max.x - fontNameSize.x) * 0.5f,
                 (g_fontFamilyButtonHitbox.min.y + g_fontFamilyButtonHitbox.max.y - fontNameSize.y) * 0.5f),
             FadeColor(IM_COL32(235, 230, 215, 255), alpha),
             fontName, alpha);
+        
         const bool fontResetHovered =
             g_settingsMousePos.x >= g_fontFamilyResetHitbox.min.x &&
             g_settingsMousePos.x <= g_fontFamilyResetHitbox.max.x &&
             g_settingsMousePos.y >= g_fontFamilyResetHitbox.min.y &&
             g_settingsMousePos.y <= g_fontFamilyResetHitbox.max.y;
+        
         if (fontResetHovered)
             previewButtonTooltip = Language::Get("reset_value").c_str();
+        
         const int fontResetShade = fontResetHovered ? 245 : 65;
+        
         draw->AddCircleFilled(fontResetCenter, 5.0f * controlScale,
             FadeColor(IM_COL32(fontResetShade, fontResetShade, fontResetShade, 255), alpha), 20);
+        
         draw->AddCircle(fontResetCenter, 6.5f * controlScale,
             FadeColor(IM_COL32(135, 132, 126, fontResetHovered ? 220 : 120), alpha), 20, 1.0f);
 
@@ -21989,52 +22392,77 @@ namespace Menu
             float& hoverT, bool enabled, const char* label) {
             const float centerY = contentTop + 8.0f * controlScale - g_layoutPanelScroll +
                 rowHeight * static_cast<float>(row) + rowHeight * 0.5f;
+        
             if (centerY < contentTop || centerY > contentBottom)
             {
                 center = ImVec2(-10000.0f, -10000.0f);
                 radius = 0.0f;
                 return;
             }
+        
             radius = 12.0f * controlScale;
+        
             center = ImVec2(x + 13.0f * controlScale, centerY);
+        
             const float dx = g_settingsMousePos.x - center.x;
+        
             const float dy = g_settingsMousePos.y - center.y;
+        
             const bool hovered = dx * dx + dy * dy <= radius * radius;
+        
             hoverT = AnimateSettingsValue(hoverT, hovered ? 1.0f : 0.0f,
                 12.0f, ImGui::GetIO().DeltaTime);
+        
             draw->AddCircleFilled(center, radius + hoverT * 2.0f,
                 FadeColor(enabled ? IM_COL32(235, 235, 235, 140)
                     : IM_COL32(20, 20, 25, 235), alpha), 48);
+        
             draw->AddCircle(center, radius + hoverT * 2.0f,
                 FadeColor(IM_COL32(255, 255, 255,
                     static_cast<int>(90.0f + 140.0f * hoverT)), alpha), 48, 1.5f);
+        
             DrawTextWithShadow(draw,
                 ImVec2(center.x + radius + 12.0f * controlScale,
                     center.y - ImGui::GetFontSize() * 0.5f),
                 FadeColor(IM_COL32(235, 230, 215, 255), alpha), label, alpha);
         };
+        
         g_gameplayPreviewButtonRadius = 0.0f;
+        
         g_gameplayDescriptionButtonRadius = 0.0f;
+        
         g_showItemQuantityButtonRadius = 0.0f;
+        
         g_showOverflowIconButtonRadius = 0.0f;
+        
         g_stardustButtonRadius = 0.0f;
+        
         g_gameplayPreviewButtonCenter = ImVec2(-10000.0f, -10000.0f);
+        
         g_gameplayDescriptionButtonCenter = ImVec2(-10000.0f, -10000.0f);
+        
         g_showItemQuantityButtonCenter = ImVec2(-10000.0f, -10000.0f);
+        
         g_showOverflowIconButtonCenter = ImVec2(-10000.0f, -10000.0f);
+        
         g_stardustButtonCenter = ImVec2(-10000.0f, -10000.0f);
+        
         drawLayoutToggle(itemToggleRows[0], g_gameplayPreviewButtonCenter,
             g_gameplayPreviewButtonRadius, g_gameplayPreviewHoverT,
             Config::g_showItemPreviewGameplay, Language::Get("show_item_preview").c_str());
+        
         drawLayoutToggle(itemToggleRows[1], g_gameplayDescriptionButtonCenter,
             g_gameplayDescriptionButtonRadius, g_gameplayDescriptionHoverT,
             Config::g_showGameplayDescription, Language::Get("show_item_information").c_str());
+        
         drawLayoutToggle(itemToggleRows[2], g_showItemQuantityButtonCenter,
             g_showItemQuantityButtonRadius, g_showItemQuantityHoverT,
             Config::g_showItemQuantity, Language::Get("show_item_quantity").c_str());
+        
         drawLayoutToggle(itemToggleRows[3], g_showOverflowIconButtonCenter,
             g_showOverflowIconButtonRadius, g_showOverflowIconHoverT,
             Config::g_showOverflowIcon, Language::Get("show_overflow_icon").c_str());
+        
         if (stardustToggleRow >= 0)
         {
             drawLayoutToggle(stardustToggleRow, g_stardustButtonCenter,
@@ -22044,21 +22472,26 @@ namespace Menu
 
         for (auto& hitbox : g_layoutColorHitboxes)
             hitbox = { ImVec2(1.0f, 1.0f), ImVec2(0.0f, 0.0f) };
+        
         for (auto& hitbox : g_layoutColorResetHitboxes)
             hitbox = { ImVec2(1.0f, 1.0f), ImVec2(0.0f, 0.0f) };
+        
         g_layoutColorPickerHitbox = {
             ImVec2(1.0f, 1.0f), ImVec2(0.0f, 0.0f) };
+        
         const auto unpackColor = [](std::uint32_t color) {
             return ImVec4(
                 static_cast<float>((color >> 16) & 0xFF) / 255.0f,
                 static_cast<float>((color >> 8) & 0xFF) / 255.0f,
                 static_cast<float>(color & 0xFF) / 255.0f, 1.0f);
         };
+        
         const auto packColor = [](float r, float g, float b) {
             return (static_cast<std::uint32_t>(std::clamp(r, 0.0f, 1.0f) * 255.0f) << 16) |
                 (static_cast<std::uint32_t>(std::clamp(g, 0.0f, 1.0f) * 255.0f) << 8) |
                 static_cast<std::uint32_t>(std::clamp(b, 0.0f, 1.0f) * 255.0f);
         };
+        
         const auto drawColorControl = [&](int row, LayoutColorControl control,
             const char* label, std::uint32_t color) {
             if (row < 0) return;
@@ -22072,22 +22505,31 @@ namespace Menu
                 hitbox = { ImVec2(1.0f, 1.0f), ImVec2(0.0f, 0.0f) };
                 return;
             }
+        
             const bool hovered = g_settingsMousePos.x >= hitbox.min.x &&
                 g_settingsMousePos.x <= hitbox.max.x &&
                 g_settingsMousePos.y >= hitbox.min.y &&
                 g_settingsMousePos.y <= hitbox.max.y;
+        
             DrawTextWithShadow(draw, ImVec2(x, rowY),
                 FadeColor(IM_COL32(235, 230, 215, 255), alpha), label, alpha);
+        
             const float swatchRadius = 11.0f * controlScale;
+        
             const ImVec2 swatch(trackMaxX - swatchRadius,
                 rowY + ImGui::GetFontSize() * 0.5f);
+        
             const ImVec4 rgb = unpackColor(color);
+        
             draw->AddCircleFilled(swatch, swatchRadius,
                 FadeColor(ImGui::ColorConvertFloat4ToU32(rgb), alpha), 32);
+        
             draw->AddCircle(swatch, swatchRadius + 1.5f,
                 FadeColor(IM_COL32(255, 255, 255, hovered ? 220 : 110), alpha), 32, 1.5f);
+        
             const ImVec2 resetCenter(x + width - 7.0f * controlScale,
                 rowY + ImGui::GetFontSize() * 0.5f);
+        
             auto& reset = g_layoutColorResetHitboxes[static_cast<std::size_t>(control)];
             reset.min = ImVec2(resetCenter.x - 8.0f * controlScale,
                 resetCenter.y - 8.0f * controlScale);
