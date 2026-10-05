@@ -20740,8 +20740,21 @@ namespace Menu
         const ImU32 gold = FadeColor(IM_COL32(215, 195, 150, 255), alpha);
         const ImU32 white = FadeColor(IM_COL32(235, 230, 215, 255), alpha);
 
+        // Gameplay layout: Language -> Animation -> Menu.
+        // Keep the controls themselves untouched; only their vertical flow changes.
+        const float languageY = y + 45.0f * controlScale - g_gameplayPanelScroll;
+        const float languageButtonHeight = std::max(
+            34.0f * controlScale, ImGui::GetFontSize() + 14.0f);
+        const float animationTitleY =
+            languageY + languageButtonHeight + 26.0f * controlScale;
+        // The three Animation controls occupy a fixed vertical sequence.  This
+        // mirrors drawSelector's spacing so MENU begins after that sequence,
+        // without changing any selector behavior or hitbox.
+        const float animationContentBottomY = animationTitleY +
+            251.0f * controlScale + 2.0f * ImGui::GetFontSize();
+
         // MENU -------------------------------------------------------
-        const float menuTitleY = y + 95.0f * controlScale - g_gameplayPanelScroll;
+        const float menuTitleY = animationContentBottomY + 16.0f * controlScale;
         DrawTextWithShadow(draw, ImVec2(x, menuTitleY), gold,
             Language::Get("menu_section").c_str(), alpha);
         const ImVec2 menuTitleSize = ImGui::CalcTextSize(
@@ -20955,7 +20968,6 @@ namespace Menu
         const float inventoryTitleY =
             iconsTitleY + (32.0f + 4.0f * 32.0f) * controlScale;
         const float fastDragOptionY = inventoryTitleY + 32.0f * controlScale;
-        const float animationTitleY = fastDragOptionY + 42.0f * controlScale;
         DrawTextWithShadow(draw, ImVec2(x, animationTitleY), gold,
             Language::Get("animation").c_str(), alpha);
         const ImVec2 animationTitleSize = ImGui::CalcTextSize(Language::Get("animation").c_str());
@@ -21201,9 +21213,6 @@ namespace Menu
                 fastDragOptionY - ImGui::GetFontSize() * 0.5f),
             white, Language::Get("fast_drag").c_str(), alpha);
 
-        const float languageY = y + 45.0f * controlScale - g_gameplayPanelScroll;
-        const float languageButtonHeight = std::max(
-            34.0f * controlScale, ImGui::GetFontSize() + 14.0f);
         g_languageButtonMin = ImVec2(x, languageY);
         g_languageButtonMax = ImVec2(x + width, languageY + languageButtonHeight);
         const bool languageHovered =
@@ -21274,7 +21283,8 @@ namespace Menu
 
         draw->PopClipRect();
         const float gameplayContentHeight =
-            selectorY + g_gameplayPanelScroll - gameplayContentTop;
+            fastDragOptionY + buttonRadius + 20.0f * controlScale +
+            g_gameplayPanelScroll - gameplayContentTop;
         const float gameplayVisibleHeight = std::max(
             gameplayContentBottom - gameplayContentTop, 1.0f);
         g_gameplayPanelMaxScroll = std::max(
