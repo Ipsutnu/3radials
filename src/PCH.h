@@ -67,6 +67,10 @@ inline float g_menuAlpha = 0.0f;
 
 inline bool g_inventoryItemJustGrabbed = false;
 inline ImVec2 g_inventoryDraggedPosition{ 0.0f, 0.0f };
+inline bool g_fastDragZoneActive = false;
+inline bool g_fastDragReturningToCursor = false;
+inline ImVec2 g_fastDragZoneCenter{ 0.0f, 0.0f };
+inline ImVec2 g_fastDragLastMousePosition{ 0.0f, 0.0f };
 
 // Variável estática inline (se quiser manter visibilidade global sem duplicação de símbolo)
 inline float g_scrollOffset = 0.0f;       // Posição de rolagem contínua
@@ -126,6 +130,7 @@ namespace Menu {
     bool SettingsGameplayDescriptionClick();
 
     ImVec2 GetSkyrimMousePos();
+    void UpdateInventoryDragPointerFromSkyrimMouse();
 
     bool SettingsCloseButtonClick();
 

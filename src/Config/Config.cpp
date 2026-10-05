@@ -41,6 +41,7 @@ namespace Config
     bool g_coloredPotions = true;
     bool g_coloredMagicSchools = false;
     bool g_coloredItemEnchants = false;
+    bool g_fastInventoryDrag = false;
     bool g_customIcons = false;
     bool g_customIconsHasPreference = false;
     std::string g_language = "EN";
@@ -1058,6 +1059,10 @@ namespace Config
                     else
                         g_coloredItemEnchants = enabled;
                 }
+                else if (key == "FastInventoryDrag")
+                {
+                    g_fastInventoryDrag = ParseEnabled(value);
+                }
                 else if (key == "CustomIcons")
                 {
                     g_customIcons = ParseEnabled(value);
@@ -1335,6 +1340,7 @@ namespace Config
         g_coloredPotions = true;
         g_coloredMagicSchools = false;
         g_coloredItemEnchants = false;
+        g_fastInventoryDrag = false;
         g_customIcons = false;
         g_customIconsHasPreference = false;
         g_language = "EN";
@@ -1477,6 +1483,7 @@ namespace Config
         SetIniValue(lines, "Gameplay", "ColoredPotions", g_coloredPotions ? "1" : "0");
         SetIniValue(lines, "Gameplay", "ColoredMagicSchools", g_coloredMagicSchools ? "1" : "0");
         SetIniValue(lines, "Gameplay", "ColoredItemEnchants", g_coloredItemEnchants ? "1" : "0");
+        SetIniValue(lines, "Gameplay", "FastInventoryDrag", g_fastInventoryDrag ? "1" : "0");
         SetIniValue(lines, "Gameplay", "CustomIcons", g_customIcons ? "1" : "0");
 
         // ========================================================

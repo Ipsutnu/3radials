@@ -540,6 +540,9 @@ namespace Menu
     static ImVec2 g_customIconsReloadCenter{};
     static float g_customIconsReloadRadius = 8.0f;
     static float g_customIconsReloadHoverT = 0.0f;
+    static ImVec2 g_fastDragButtonCenter{};
+    static float g_fastDragButtonRadius = 12.0f;
+    static float g_fastDragButtonHoverT = 0.0f;
 
     // ============================================================
 
@@ -4191,6 +4194,7 @@ namespace Menu
             for (const auto& option : g_radialAnimationOptionHitboxes) addRect(option);
             for (const auto& center : g_gameplayIconButtonCenters)
                 add(center, std::max(12.0f, g_gameplayIconButtonRadius));
+            add(g_fastDragButtonCenter, std::max(12.0f, g_fastDragButtonRadius));
             if (IconCustom::HasValidConfiguration())
                 add(g_customIconsReloadCenter, std::max(8.0f, g_customIconsReloadRadius));
             for (const auto& option : g_languageOptionHitboxes)
@@ -4898,6 +4902,8 @@ namespace Menu
             targets.push_back(g_slowTimeResetHitbox);
             for (const auto& center : g_gameplayIconButtonCenters)
                 addCircle(center, std::max(g_gameplayIconButtonRadius, 18.0f));
+            addCircle(g_fastDragButtonCenter,
+                std::max(g_fastDragButtonRadius, 18.0f));
             if (IconCustom::HasValidConfiguration())
                 addCircle(g_customIconsReloadCenter, std::max(g_customIconsReloadRadius, 10.0f));
             targets.push_back({ g_radialShapeButtonMin, g_radialShapeButtonMax });
@@ -7987,6 +7993,8 @@ namespace Menu
 
         g_lastInventoryRadialPosition = g_inventoryDraggedPosition;
         g_hasLastInventoryRadialPosition = true;
+        g_fastDragZoneActive = false;
+        g_fastDragReturningToCursor = false;
         const std::size_t previousSideItemCount = g_sideItems.size();
 
         auto removeItem = [](
@@ -8244,6 +8252,8 @@ namespace Menu
         // do resultado, para não vazar estado entre arrastos.
         g_inventoryItemWasPlaced = false;
         g_inventoryOverflowMorphActive = false;
+        g_fastDragZoneActive = false;
+        g_fastDragReturningToCursor = false;
 
         g_showWindow = false;
         g_radialMode = RadialMode::Inventory;
@@ -12735,6 +12745,66 @@ namespace Menu
     }
 
 
+    constexpr float FAST_DRAG_ZONE_RADIUS = 72.0f;
+
+    static void InitializeInventoryDragPosition()
+    {
+        const ImVec2 mouse = GetSkyrimMousePos();
+        g_fastDragZoneActive = false;
+        g_fastDragReturningToCursor = false;
+        g_fastDragLastMousePosition = mouse;
+
+        if (Config::g_fastInventoryDrag && g_hasLastInventoryRadialPosition)
+        {
+            g_inventoryDraggedPosition = g_lastInventoryRadialPosition;
+            g_fastDragZoneCenter = g_lastInventoryRadialPosition;
+            g_fastDragZoneActive = true;
+            return;
+        }
+
+        g_inventoryDraggedPosition = mouse;
+    }
+
+    void UpdateInventoryDragPointerFromSkyrimMouse()
+    {
+        const ImVec2 mouse = GetSkyrimMousePos();
+
+        if (!Config::g_fastInventoryDrag)
+        {
+            g_fastDragZoneActive = false;
+            g_fastDragReturningToCursor = false;
+            g_inventoryDraggedPosition = mouse;
+            return;
+        }
+
+        if (g_fastDragZoneActive)
+        {
+            const ImVec2 delta(
+                mouse.x - g_fastDragLastMousePosition.x,
+                mouse.y - g_fastDragLastMousePosition.y);
+            const ImVec2 screen = Resolution::GetVirtualSize();
+            g_inventoryDraggedPosition.x = std::clamp(
+                g_inventoryDraggedPosition.x + delta.x, 0.0f, screen.x);
+            g_inventoryDraggedPosition.y = std::clamp(
+                g_inventoryDraggedPosition.y + delta.y, 0.0f, screen.y);
+            g_fastDragLastMousePosition = mouse;
+
+            const float dx = g_inventoryDraggedPosition.x - g_fastDragZoneCenter.x;
+            const float dy = g_inventoryDraggedPosition.y - g_fastDragZoneCenter.y;
+            if (dx * dx + dy * dy >= FAST_DRAG_ZONE_RADIUS * FAST_DRAG_ZONE_RADIUS)
+            {
+                g_fastDragZoneActive = false;
+                g_fastDragReturningToCursor = true;
+            }
+            return;
+        }
+
+        // A transição é atualizada por frame em UpdateInventoryDrag().
+        // Não a substitua por um salto no próximo evento de mouse.
+        if (!g_fastDragReturningToCursor)
+            g_inventoryDraggedPosition = mouse;
+    }
+
     void OpenInventoryRadial()
     {
         Slowtime::End();
@@ -12764,7 +12834,7 @@ namespace Menu
 
         ImGuiIO& io = ImGui::GetIO();
 
-        g_inventoryDraggedPosition = GetSkyrimMousePos();
+        InitializeInventoryDragPosition();
 
         //POINT pt{};
         //GetCursorPos(&pt);
@@ -12785,6 +12855,23 @@ namespace Menu
 
         if (g_inventoryDragMode == InventoryDragMode::KeyDrag)
         {
+            if (g_fastDragReturningToCursor)
+            {
+                const ImVec2 target = GetSkyrimMousePos();
+                const float factor = 1.0f - std::exp(-18.0f *
+                    std::clamp(io.DeltaTime, 0.0f, 1.0f / 30.0f));
+                g_inventoryDraggedPosition.x +=
+                    (target.x - g_inventoryDraggedPosition.x) * factor;
+                g_inventoryDraggedPosition.y +=
+                    (target.y - g_inventoryDraggedPosition.y) * factor;
+                const float dx = target.x - g_inventoryDraggedPosition.x;
+                const float dy = target.y - g_inventoryDraggedPosition.y;
+                if (dx * dx + dy * dy < 1.0f)
+                {
+                    g_inventoryDraggedPosition = target;
+                    g_fastDragReturningToCursor = false;
+                }
+            }
             if (g_inventoryItemJustGrabbed)
                 g_inventoryItemJustGrabbed = false;
 
@@ -12992,7 +13079,7 @@ namespace Menu
         g_inventoryItemJustGrabbed = true;
         g_inventoryOverflowMorphActive = true;
 
-        g_inventoryDraggedPosition = GetSkyrimMousePos();
+        InitializeInventoryDragPosition();
 
         // ============================================================
         // 7. ABRE O RADIAL
@@ -17231,6 +17318,18 @@ namespace Menu
 
         constexpr float radius = 34.0f;
 
+        // Fast Drag mantém o item dentro da última zona válida até ele tocar
+        // a borda. O anel é só uma referência visual e fica atrás do item.
+        if (Config::g_fastInventoryDrag && g_fastDragZoneActive)
+        {
+            draw->AddCircle(
+                g_fastDragZoneCenter,
+                FAST_DRAG_ZONE_RADIUS,
+                FadeColor(IM_COL32(255, 255, 255, 165), g_globalAlpha),
+                64,
+                1.35f);
+        }
+
         //draw->AddCircleFilled(
         //    pos, radius, FadeColor(IM_COL32(20, 20, 25, 235), g_globalAlpha));
         DrawEquippedItemBackground(
@@ -19974,6 +20073,17 @@ namespace Menu
             }
         }
 
+        const float fastDragDx = g_settingsMousePos.x - g_fastDragButtonCenter.x;
+        const float fastDragDy = g_settingsMousePos.y - g_fastDragButtonCenter.y;
+        const float fastDragRadius = g_fastDragButtonRadius + 3.0f;
+        if (fastDragDx * fastDragDx + fastDragDy * fastDragDy <=
+            fastDragRadius * fastDragRadius)
+        {
+            Config::g_fastInventoryDrag = !Config::g_fastInventoryDrag;
+            Config::SaveConfig();
+            return true;
+        }
+
         const bool customIconsAvailable = IconCustom::HasValidConfiguration();
         const float reloadDx = g_settingsMousePos.x - g_customIconsReloadCenter.x;
         const float reloadDy = g_settingsMousePos.y - g_customIconsReloadCenter.y;
@@ -20842,8 +20952,10 @@ namespace Menu
         // ICONS ainda usava uma coordenada antiga e era desenhado por cima
         // do multiplicador depois que o bloco de Blur foi adicionado.
         const float iconsTitleY = slowTrackY + 40.0f * controlScale;
-        const float animationTitleY =
+        const float inventoryTitleY =
             iconsTitleY + (32.0f + 4.0f * 32.0f) * controlScale;
+        const float fastDragOptionY = inventoryTitleY + 32.0f * controlScale;
+        const float animationTitleY = fastDragOptionY + 42.0f * controlScale;
         DrawTextWithShadow(draw, ImVec2(x, animationTitleY), gold,
             Language::Get("animation").c_str(), alpha);
         const ImVec2 animationTitleSize = ImGui::CalcTextSize(Language::Get("animation").c_str());
@@ -21055,6 +21167,39 @@ namespace Menu
                 customIconsReloadTooltip = reloadHovered;
             }
         }
+
+        DrawTextWithShadow(draw, ImVec2(x, inventoryTitleY), gold,
+            Language::Get("inventory_section").c_str(), alpha);
+        const ImVec2 inventoryTitleSize = ImGui::CalcTextSize(
+            Language::Get("inventory_section").c_str());
+        draw->AddLine(
+            ImVec2(x + inventoryTitleSize.x + 12.0f * controlScale,
+                inventoryTitleY + ImGui::GetFontSize() * 0.5f),
+            ImVec2(x + width, inventoryTitleY + ImGui::GetFontSize() * 0.5f),
+            FadeColor(IM_COL32(215, 195, 150, 90), alpha), 1.0f);
+
+        g_fastDragButtonRadius = buttonRadius;
+        g_fastDragButtonCenter = ImVec2(x + 13.0f * controlScale, fastDragOptionY);
+        const float fastDragDx = g_settingsMousePos.x - g_fastDragButtonCenter.x;
+        const float fastDragDy = g_settingsMousePos.y - g_fastDragButtonCenter.y;
+        const bool fastDragHovered = fastDragDx * fastDragDx + fastDragDy * fastDragDy <=
+            buttonRadius * buttonRadius;
+        g_fastDragButtonHoverT = AnimateSettingsValue(g_fastDragButtonHoverT,
+            fastDragHovered ? 1.0f : 0.0f, 12.0f, ImGui::GetIO().DeltaTime);
+        draw->AddCircleFilled(g_fastDragButtonCenter,
+            buttonRadius + g_fastDragButtonHoverT * 2.0f,
+            FadeColor(Config::g_fastInventoryDrag
+                ? IM_COL32(235, 235, 235, 140)
+                : IM_COL32(20, 20, 25, 235), alpha), 48);
+        draw->AddCircle(g_fastDragButtonCenter,
+            buttonRadius + g_fastDragButtonHoverT * 2.0f,
+            FadeColor(IM_COL32(255, 255, 255,
+                static_cast<int>(90.0f + 140.0f * g_fastDragButtonHoverT)), alpha),
+            48, 1.5f);
+        DrawTextWithShadow(draw,
+            ImVec2(g_fastDragButtonCenter.x + buttonRadius + 12.0f,
+                fastDragOptionY - ImGui::GetFontSize() * 0.5f),
+            white, Language::Get("fast_drag").c_str(), alpha);
 
         const float languageY = y + 45.0f * controlScale - g_gameplayPanelScroll;
         const float languageButtonHeight = std::max(

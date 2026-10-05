@@ -721,11 +721,10 @@ RE::BSEventNotifyControl InputHandler::ProcessEvent(
             if (g_radialMode == RadialMode::Inventory &&
                 g_inventoryDragMode == InventoryDragMode::KeyDrag)
             {
-                // O item acompanha a coordenada absoluta do cursor Scaleform
-                // em vez de acumular deltas de mouse. O evento segue intacto
-                // para o Skyrim, portanto o cursor do inventário permanece
-                // livre durante o drag.
-                g_inventoryDraggedPosition = Menu::GetSkyrimMousePos();
+                // O modo normal acompanha a posição absoluta do Scaleform.
+                // Fast Drag, quando ativo, preserva temporariamente a zona
+                // da última soltura válida e usa o delta apenas dentro dela.
+                Menu::UpdateInventoryDragPointerFromSkyrimMouse();
                 continue;
             }
 

@@ -84,6 +84,7 @@ namespace Config
     extern bool g_coloredPotions;
     extern bool g_coloredMagicSchools;
     extern bool g_coloredItemEnchants;
+    extern bool g_fastInventoryDrag;
     // Ativado apenas quando o leitor encontra ao menos uma regra I4 válida.
     extern bool g_customIcons;
     bool HasCustomIconsPreference();

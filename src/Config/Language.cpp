@@ -45,6 +45,7 @@ namespace Language
             { "colored_potions", "Colored Potions" },
             { "colored_magic_schools", "Colored Magic Schools" },
             { "color_item_enchants", "Color Item Enchants" },
+            { "inventory_section", "INVENTORY" }, { "fast_drag", "Fast Drag" },
             { "language", "Language" }, { "no_languages", "No valid language files" },
             { "radial_quantity", "Radial Quantity" }, { "center_opacity", "Center Opacity" },
             { "radial_stretch", "Radial Stretch" }, { "stardust", "Stardust" },
