@@ -7,11 +7,20 @@ namespace Resolution
 {
     namespace
     {
+        // "Real" remains the physical game window. It is the coordinate
+        // space delivered by Win32 input and used by the rest of the UI.
         ImVec2 g_realSize = kVirtualSize;
         float g_scale = 1.0f;
         ImVec2 g_offset{ 0.0f, 0.0f };
+
+        // Display Tweaks can render the game into a smaller buffer and scale
+        // it afterwards. Keep that destination independent from the window.
+        ImVec2 g_renderSize = kVirtualSize;
+        float g_renderScale = 1.0f;
+        ImVec2 g_renderOffset{ 0.0f, 0.0f };
         bool g_viewportChanged = false;
         bool g_frameActive = false;
+        bool g_drawDataTransformed = false;
 
         void UpdateTransform(const ImVec2& a_realSize)
         {
@@ -28,6 +37,20 @@ namespace Resolution
                 (g_realSize.x - kVirtualSize.x * g_scale) * 0.5f,
                 (g_realSize.y - kVirtualSize.y * g_scale) * 0.5f);
         }
+
+        void UpdateRenderTransform(const ImVec2& a_renderSize)
+        {
+            if (a_renderSize.x <= 0.0f || a_renderSize.y <= 0.0f)
+                return;
+
+            g_renderSize = a_renderSize;
+            g_renderScale = std::min(
+                g_renderSize.x / kVirtualSize.x,
+                g_renderSize.y / kVirtualSize.y);
+            g_renderOffset = ImVec2(
+                (g_renderSize.x - kVirtualSize.x * g_renderScale) * 0.5f,
+                (g_renderSize.y - kVirtualSize.y * g_renderScale) * 0.5f);
+        }
     }
 
     void PrepareFrame()
@@ -35,6 +58,7 @@ namespace Resolution
         ImGuiIO& io = ImGui::GetIO();
         UpdateTransform(io.DisplaySize);
         io.DisplaySize = kVirtualSize;
+        g_drawDataTransformed = false;
     }
 
     void BeginFrame()
@@ -49,14 +73,22 @@ namespace Resolution
         // glyphs at a higher density first so that reduction stays sharp.
         // ImGui 1.92 renomeou SetFontRasterizerDensity() para
         // SetPixelDensity(); o comportamento continua sendo o mesmo aqui.
-        ImGui::SetPixelDensity(std::max(1.0f, 1.0f / g_scale));
+        ImGui::SetPixelDensity(std::max(1.0f, 1.0f / g_renderScale));
         g_frameActive = true;
     }
 
-    void TransformDrawData(ImDrawData* a_drawData)
+    void SetRenderTargetSize(const ImVec2& a_renderTargetSize)
     {
-        if (!a_drawData || !g_frameActive)
+        UpdateRenderTransform(a_renderTargetSize);
+    }
+
+    void TransformDrawData(ImDrawData* a_drawData,
+        const ImVec2& a_renderTargetSize)
+    {
+        if (!a_drawData || g_drawDataTransformed)
             return;
+
+        SetRenderTargetSize(a_renderTargetSize);
 
         // This ImGui context is created and owned by WheelWheel. Transforming
         // its draw data therefore cannot affect another plugin's context.
@@ -64,7 +96,7 @@ namespace Resolution
         {
             ImDrawList* list = a_drawData->CmdLists[listIndex];
             for (ImDrawVert& vertex : list->VtxBuffer)
-                vertex.pos = ToReal(vertex.pos);
+                vertex.pos = ToRender(vertex.pos);
 
             for (ImDrawCmd& command : list->CmdBuffer)
             {
@@ -82,20 +114,22 @@ namespace Resolution
 
                 if (isRootViewportClip)
                 {
-                    command.ClipRect = ImVec4(0.0f, 0.0f, g_realSize.x, g_realSize.y);
+                    command.ClipRect = ImVec4(0.0f, 0.0f,
+                        g_renderSize.x, g_renderSize.y);
                 }
                 else
                 {
-                    const ImVec2 min = ToReal(ImVec2(command.ClipRect.x, command.ClipRect.y));
-                    const ImVec2 max = ToReal(ImVec2(command.ClipRect.z, command.ClipRect.w));
+                    const ImVec2 min = ToRender(ImVec2(command.ClipRect.x, command.ClipRect.y));
+                    const ImVec2 max = ToRender(ImVec2(command.ClipRect.z, command.ClipRect.w));
                     command.ClipRect = ImVec4(min.x, min.y, max.x, max.y);
                 }
             }
         }
 
         a_drawData->DisplayPos = ImVec2(0.0f, 0.0f);
-        a_drawData->DisplaySize = g_realSize;
+        a_drawData->DisplaySize = g_renderSize;
         a_drawData->FramebufferScale = ImVec2(1.0f, 1.0f);
+        g_drawDataTransformed = true;
     }
 
     void EndFrame()
@@ -112,6 +146,7 @@ namespace Resolution
     }
 
     ImVec2 GetRealSize() { return g_realSize; }
+    ImVec2 GetRenderSize() { return g_renderSize; }
     ImVec2 GetRealCenter() { return ImVec2(g_realSize.x * 0.5f, g_realSize.y * 0.5f); }
     float GetScale() { return g_scale; }
     bool DidViewportChange() { return g_viewportChanged; }
@@ -120,6 +155,11 @@ namespace Resolution
     {
         return ImVec2(a_virtualPosition.x * g_scale + g_offset.x,
             a_virtualPosition.y * g_scale + g_offset.y);
+    }
+    ImVec2 ToRender(const ImVec2& a_virtualPosition)
+    {
+        return ImVec2(a_virtualPosition.x * g_renderScale + g_renderOffset.x,
+            a_virtualPosition.y * g_renderScale + g_renderOffset.y);
     }
     ImVec2 ToVirtual(const ImVec2& a_realPosition)
     {

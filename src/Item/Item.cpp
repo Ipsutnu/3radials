@@ -377,7 +377,10 @@ namespace ItemPreview
             // Keep the requested position virtual.  Re-evaluate it here so a
             // live resolution change moves an already-visible model without
             // waiting for a new selection.
-            const ImVec2 realHudPos = Resolution::ToReal(g_hudPos);
+            // The UI 3D scene uses Skyrim's current render resolution, which
+            // may be lower than the physical window when ResolutionScale is
+            // active.  Project the virtual HUD position into that space.
+            const ImVec2 realHudPos = Resolution::ToRender(g_hudPos);
             const float ratio_x = world_width / static_cast<float>(sz.width);
             const float ratio_y = world_height / static_cast<float>(sz.height);
 

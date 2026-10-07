@@ -138,6 +138,32 @@ namespace RenderManager
                        IID_PPV_ARGS(result.GetAddressOf()))) && result;
         }
 
+        bool GetRenderTargetSize(ID3D11RenderTargetView* a_target,
+            ImVec2& a_size)
+        {
+            a_size = {};
+            if (!a_target)
+                return false;
+
+            Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+            a_target->GetResource(resource.GetAddressOf());
+            if (!resource)
+                return false;
+
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+            if (FAILED(resource.As(&texture)) || !texture)
+                return false;
+
+            D3D11_TEXTURE2D_DESC desc{};
+            texture->GetDesc(&desc);
+            if (desc.Width == 0 || desc.Height == 0)
+                return false;
+
+            a_size = ImVec2(static_cast<float>(desc.Width),
+                static_cast<float>(desc.Height));
+            return true;
+        }
+
         //float g_globalAlpha = 0.0f;
 
         constexpr float g_fadeSpeed = 5.0f;
@@ -482,6 +508,15 @@ namespace RenderManager
                 return;
             }
 
+            // SSE Display Tweaks may render to a smaller surface than the
+            // physical window. Capture the current UI target before placing
+            // the 3D preview, then use the same space for that projection.
+            Microsoft::WRL::ComPtr<ID3D11RenderTargetView> frameTarget;
+            g_context->OMGetRenderTargets(1, frameTarget.GetAddressOf(), nullptr);
+            ImVec2 frameTargetSize{};
+            if (GetRenderTargetSize(frameTarget.Get(), frameTargetSize))
+                Resolution::SetRenderTargetSize(frameTargetSize);
+
             static bool lastShowState = false;
             if (lastShowState != g_showWindow)
             {
@@ -638,8 +673,6 @@ namespace RenderManager
 
             ImGui::Render();
 
-            Resolution::TransformDrawData(ImGui::GetDrawData());
-
             g_drawDataReady = true;
             Resolution::EndFrame();
         }
@@ -679,6 +712,9 @@ namespace RenderManager
 
                 auto* target = uiTarget.Get();
                 g_context->OMSetRenderTargets(1, &target, uiDepth.Get());
+                ImVec2 targetSize = Resolution::GetRealSize();
+                GetRenderTargetSize(target, targetSize);
+                Resolution::TransformDrawData(ImGui::GetDrawData(), targetSize);
                 Present::MarkWatchdogPhase("CS: ImGui render");
                 ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 
@@ -759,6 +795,10 @@ namespace RenderManager
 
         auto* target = g_presentTarget.Get();
         g_context->OMSetRenderTargets(1, &target, nullptr);
+
+        Resolution::TransformDrawData(ImGui::GetDrawData(),
+            ImVec2(static_cast<float>(backDesc.Width),
+                static_cast<float>(backDesc.Height)));
 
         Present::MarkWatchdogPhase("fallback: ImGui render");
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());

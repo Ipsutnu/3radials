@@ -3,7 +3,9 @@
 #include <imgui.h>
 
 // WheelWheel is authored in a fixed, virtual 1920x1080 coordinate space.
-// This module is the sole bridge between that space and the real backbuffer.
+// This module is the sole bridge between that space, the game window (input),
+// and the D3D render target (output).  They are not necessarily the same when
+// SSE Display Tweaks uses ResolutionScale or an upscaler is active.
 namespace Resolution
 {
     inline constexpr ImVec2 kVirtualSize{ 1920.0f, 1080.0f };
@@ -16,14 +18,21 @@ namespace Resolution
     // consumed by ImGui from real pixels to WheelWheel virtual coordinates.
     void BeginFrame();
 
-    // Converts WheelWheel draw data to the real viewport. Call after ImGui::Render()
-    // and immediately before the DX11 backend consumes the draw data.
-    void TransformDrawData(ImDrawData* a_drawData);
+    // Converts WheelWheel draw data to the target that will actually receive
+    // the ImGui pass. Call after ImGui::Render() and immediately before the
+    // DX11 backend consumes the draw data.
+    void TransformDrawData(ImDrawData* a_drawData,
+        const ImVec2& a_renderTargetSize);
+
+    // Updates render-space conversion before the final ImGui pass. The UI 3D
+    // preview uses it while being prepared in Skyrim's normal UI pass.
+    void SetRenderTargetSize(const ImVec2& a_renderTargetSize);
 
     // Restores ImGui's public viewport after rendering.
     void EndFrame();
 
     [[nodiscard]] ImVec2 GetRealSize();
+    [[nodiscard]] ImVec2 GetRenderSize();
     [[nodiscard]] constexpr ImVec2 GetVirtualSize() { return kVirtualSize; }
     [[nodiscard]] ImVec2 GetRealCenter();
     [[nodiscard]] constexpr ImVec2 GetVirtualCenter()
@@ -34,6 +43,7 @@ namespace Resolution
     [[nodiscard]] bool DidViewportChange();
 
     [[nodiscard]] ImVec2 ToReal(const ImVec2& a_virtualPosition);
+    [[nodiscard]] ImVec2 ToRender(const ImVec2& a_virtualPosition);
     [[nodiscard]] ImVec2 ToVirtual(const ImVec2& a_realPosition);
     [[nodiscard]] ImVec2 ToRealDelta(const ImVec2& a_virtualDelta);
     [[nodiscard]] ImVec2 ToVirtualDelta(const ImVec2& a_realDelta);
