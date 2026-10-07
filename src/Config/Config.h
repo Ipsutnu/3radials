@@ -71,14 +71,15 @@ namespace Config
     extern int g_radialAnimation;
     extern int g_radialShape;
     extern bool g_customRadial;
-    extern bool g_slowTimeDuringRadialSelection;
     extern float g_slowTimeMultiplier;
     extern bool g_slowTimeTop;
     extern bool g_slowTimeCentral;
     extern bool g_slowTimeBottom;
+    extern bool g_slowTimeDraw;
     extern bool g_blurTop;
     extern bool g_blurCentral;
     extern bool g_blurBottom;
+    extern bool g_blurDraw;
     
     extern bool g_showGameplayDescription;
     extern bool g_coloredPotions;

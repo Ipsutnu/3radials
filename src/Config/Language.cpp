@@ -40,6 +40,8 @@ namespace Language
             { "slow_time_multiplier", "Stop Multiplier" },
             { "slow_time_top", "Top" }, { "slow_time_left_right", "Left/Right" },
             { "slow_time_bottom", "Bottom" },
+            { "slowtime", "Slowtime" },
+            { "draw", "Draw" },
             { "blur", "Blur" },
             { "icons", "ICONS" }, { "custom_icons", "Custom Icons" }, { "reload", "Reload" },
             { "colored_potions", "Colored Potions" },

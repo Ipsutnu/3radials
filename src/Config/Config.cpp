@@ -28,14 +28,15 @@ namespace Config
     int g_radialAnimation = static_cast<int>(RadialAnimation::Style::SimpleRadial);
     int g_radialShape = static_cast<int>(RadialShape::Style::ClassicOrbit);
     bool g_customRadial = false;
-    bool g_slowTimeDuringRadialSelection = false;
     float g_slowTimeMultiplier = 0.15f;
     bool g_slowTimeTop = true;
     bool g_slowTimeCentral = true;
     bool g_slowTimeBottom = true;
+    bool g_slowTimeDraw = false;
     bool g_blurTop = false;
     bool g_blurCentral = false;
     bool g_blurBottom = false;
+    bool g_blurDraw = false;
 
     bool g_showGameplayDescription = false;
     bool g_coloredPotions = true;
@@ -955,10 +956,6 @@ namespace Config
                     const std::string normalized = ToUpper(value);
                     g_customRadial = normalized == "1" || normalized == "TRUE" || normalized == "ON";
                 }
-                else if (key == "SlowTimeDuringRadialSelection")
-                {
-                    g_slowTimeDuringRadialSelection = ParseEnabled(value);
-                }
                 else if (key == "SlowTimeMultiplier")
                 {
                     try { g_slowTimeMultiplier = std::clamp(std::stof(value), 0.1f, 0.8f); }
@@ -967,9 +964,11 @@ namespace Config
                 else if (key == "SlowTimeTop") g_slowTimeTop = ParseEnabled(value);
                 else if (key == "SlowTimeCentral") g_slowTimeCentral = ParseEnabled(value);
                 else if (key == "SlowTimeBottom") g_slowTimeBottom = ParseEnabled(value);
+                else if (key == "SlowTimeDraw") g_slowTimeDraw = ParseEnabled(value);
                 else if (key == "BlurTop") g_blurTop = ParseEnabled(value);
                 else if (key == "BlurCentral") g_blurCentral = ParseEnabled(value);
                 else if (key == "BlurBottom") g_blurBottom = ParseEnabled(value);
+                else if (key == "BlurDraw") g_blurDraw = ParseEnabled(value);
                 else if (key == "SideMouseSensitivity")
                 {
                     try { g_sideMouseSensitivity = std::clamp(std::stof(value), 0.25f, 3.0f); }
@@ -1033,10 +1032,6 @@ namespace Config
                     const std::string normalized = ToUpper(value);
                     g_customRadial = normalized == "1" || normalized == "TRUE" || normalized == "ON";
                 }
-                else if (key == "SlowTimeDuringRadialSelection")
-                {
-                    g_slowTimeDuringRadialSelection = ParseEnabled(value);
-                }
                 else if (key == "SlowTimeMultiplier")
                 {
                     try { g_slowTimeMultiplier = std::clamp(std::stof(value), 0.1f, 0.8f); }
@@ -1045,9 +1040,11 @@ namespace Config
                 else if (key == "SlowTimeTop") g_slowTimeTop = ParseEnabled(value);
                 else if (key == "SlowTimeCentral") g_slowTimeCentral = ParseEnabled(value);
                 else if (key == "SlowTimeBottom") g_slowTimeBottom = ParseEnabled(value);
+                else if (key == "SlowTimeDraw") g_slowTimeDraw = ParseEnabled(value);
                 else if (key == "BlurTop") g_blurTop = ParseEnabled(value);
                 else if (key == "BlurCentral") g_blurCentral = ParseEnabled(value);
                 else if (key == "BlurBottom") g_blurBottom = ParseEnabled(value);
+                else if (key == "BlurDraw") g_blurDraw = ParseEnabled(value);
                 else if (key == "ColoredPotions" || key == "ColoredMagicSchools" || key == "ColoredItemEnchants")
                 {
                     const std::string normalized = ToUpper(value);
@@ -1328,14 +1325,15 @@ namespace Config
         g_radialAnimation = static_cast<int>(RadialAnimation::Style::SimpleRadial);
         g_radialShape = static_cast<int>(RadialShape::Style::ClassicOrbit);
         g_customRadial = false;
-        g_slowTimeDuringRadialSelection = false;
         g_slowTimeMultiplier = 0.15f;
         g_slowTimeTop = true;
         g_slowTimeCentral = true;
         g_slowTimeBottom = true;
+        g_slowTimeDraw = false;
         g_blurTop = false;
         g_blurCentral = false;
         g_blurBottom = false;
+        g_blurDraw = false;
         g_showGameplayDescription = false;
         g_coloredPotions = true;
         g_coloredMagicSchools = false;
@@ -1459,16 +1457,16 @@ namespace Config
             RadialShape::Name(static_cast<RadialShape::Style>(
                 std::clamp(g_radialShape, 0, RadialShape::Count() - 1))));
         SetIniValue(lines, "Gameplay", "CustomRadial", g_customRadial ? "1" : "0");
-        SetIniValue(lines, "Gameplay", "SlowTimeDuringRadialSelection",
-            g_slowTimeDuringRadialSelection ? "1" : "0");
         SetIniValue(lines, "Gameplay", "SlowTimeMultiplier",
             std::to_string(std::clamp(g_slowTimeMultiplier, 0.1f, 0.8f)));
         SetIniValue(lines, "Gameplay", "SlowTimeTop", g_slowTimeTop ? "1" : "0");
         SetIniValue(lines, "Gameplay", "SlowTimeCentral", g_slowTimeCentral ? "1" : "0");
         SetIniValue(lines, "Gameplay", "SlowTimeBottom", g_slowTimeBottom ? "1" : "0");
+        SetIniValue(lines, "Gameplay", "SlowTimeDraw", g_slowTimeDraw ? "1" : "0");
         SetIniValue(lines, "Gameplay", "BlurTop", g_blurTop ? "1" : "0");
         SetIniValue(lines, "Gameplay", "BlurCentral", g_blurCentral ? "1" : "0");
         SetIniValue(lines, "Gameplay", "BlurBottom", g_blurBottom ? "1" : "0");
+        SetIniValue(lines, "Gameplay", "BlurDraw", g_blurDraw ? "1" : "0");
 
         // ========================================================
         // GAMEPLAY

@@ -20,6 +20,8 @@ namespace Serialization
 
     constexpr std::uint32_t kSerializationID = 'WHLW';
     constexpr std::uint32_t kRecordRadials    = 'RADS';
+    constexpr std::uint32_t kRecordQuickDraw  = 'QDRW';
+    constexpr std::uint32_t kQuickDrawVersion = 1;
 
     // Versão antiga: apenas FormID.
     constexpr std::uint32_t kVersionLegacy = 1;
@@ -783,6 +785,15 @@ namespace Serialization
 
         SaveRadialLocks(a_intfc);
 
+        if (a_intfc->OpenRecord(kRecordQuickDraw, kQuickDrawVersion))
+        {
+            Menu::SaveQuickDraw(a_intfc);
+        }
+        else
+        {
+            spdlog::error("SERIALIZATION SAVE | quick draw OpenRecord failed");
+        }
+
         spdlog::info(
             "SERIALIZATION SAVE COMPLETE | side={} | top={} | bottom={}",
             Menu::g_sideItems.size(),
@@ -803,6 +814,7 @@ namespace Serialization
             return;
 
         ClearRadials();
+        Menu::ClearQuickDraw();
 
         // ============================================================
         // REDEFINE AS TRAVAS ANTES DO CARREGAMENTO
@@ -954,6 +966,13 @@ namespace Serialization
                 break;
             }
 
+            case kRecordQuickDraw:
+            {
+                if (!Menu::LoadQuickDraw(a_intfc, version, length))
+                    spdlog::warn("SERIALIZATION LOAD | quick draw data ignored");
+                break;
+            }
+
             // ========================================================
             // REGISTRO DESCONHECIDO
             // ========================================================
@@ -985,6 +1004,7 @@ namespace Serialization
         // ============================================================
 
         ClearRadials();
+        Menu::ClearQuickDraw();
 
         // ============================================================
         // REDEFINE AS CONFIGURAÇÕES DAS TRAVAS

@@ -550,6 +550,45 @@ namespace Menu
     static std::uint16_t g_settingsHoveredUniqueID = 0;
     static bool g_settingsHoveredHasUniqueID = false;
 
+    // ============================================================
+    // QUICK DRAW
+    //
+    // Gestos são armazenados em coordenadas normalizadas ao círculo. Isso
+    // torna o desenho independente de resolução, proporção de tela e do
+    // raio visual usado no editor/gameplay.
+    // ============================================================
+    struct QuickDrawKey
+    {
+        RE::FormID formID = 0;
+        std::uint16_t uniqueID = 0;
+        bool hasUniqueID = false;
+    };
+
+    struct QuickDrawGesture
+    {
+        QuickDrawKey key{};
+        std::vector<ImVec2> points;
+    };
+
+    static std::vector<QuickDrawGesture> g_quickDrawGestures;
+    static bool g_quickDrawEditorOpen = false;
+    static RadialItem g_quickDrawEditorItem{};
+    static std::vector<ImVec2> g_quickDrawEditorStroke;
+    static bool g_quickDrawEditorDrawing = false;
+    static ImVec2 g_quickDrawEditorResetMin{};
+    static ImVec2 g_quickDrawEditorResetMax{};
+    static ImVec2 g_quickDrawEditorOkMin{};
+    static ImVec2 g_quickDrawEditorOkMax{};
+
+    static bool g_quickDrawGameplayActive = false;
+    static bool g_quickDrawGameplayDrawing = false;
+    static float g_quickDrawGameplayExpandT = 0.0f;
+    static std::vector<ImVec2> g_quickDrawGameplayStroke;
+    static RadialItem* g_quickDrawSelectionOverride = nullptr;
+    static RadialSide g_quickDrawSelectionSide = RadialSide::None;
+    static constexpr float QUICK_DRAW_EDITOR_RADIUS = RADIAL_DEADZONE * 5.0f;
+    static constexpr float QUICK_DRAW_MATCH_THRESHOLD = 0.50f;
+
     static ImVec2 g_settingsMousePos{ 0.0f, 0.0f };
     static bool g_gamepadSettingsCursorActive = false;
     static bool g_gamepadSettingsPrimaryOwned = false;
@@ -579,6 +618,9 @@ namespace Menu
     static bool g_settingsLeftPressed = false;
     static bool g_settingsLeftReleased = false;
     static bool g_settingsRightPressed = false;
+    static bool FinishQuickDrawGameplay();
+    void UseSelectedRadialItem();
+    void DrawSettingsCursor();
 
     enum class LayoutSlider : std::size_t
     {
@@ -1087,9 +1129,9 @@ namespace Menu
     static ImVec2 g_slowTimeSliderMax{ 0.0f, 0.0f };
     static LayoutSliderHitbox g_slowTimeResetHitbox{};
     static bool g_slowTimeSliderDragging = false;
-    static std::array<ImVec2, 3> g_slowTimeScopeCenters{};
+    static std::array<ImVec2, 4> g_slowTimeScopeCenters{};
     static float g_slowTimeScopeRadius = 0.0f;
-    static std::array<ImVec2, 3> g_blurScopeCenters{};
+    static std::array<ImVec2, 4> g_blurScopeCenters{};
     static float g_blurScopeRadius = 0.0f;
     static bool g_gameplayBlurApplied = false;
 
@@ -4283,8 +4325,6 @@ namespace Menu
         
             addRect({ g_languageButtonMin, g_languageButtonMax });
         
-            add(g_slowTimeButtonCenter, std::max(12.0f, g_slowTimeButtonRadius));
-        
             for (const auto& center : g_slowTimeScopeCenters)
                 add(center, std::max(6.0f, g_slowTimeScopeRadius));
         
@@ -5069,9 +5109,6 @@ namespace Menu
             language.min = g_languageButtonMin;
             language.max = g_languageButtonMax;
             targets.push_back(language);
-        
-            addCircle(g_slowTimeButtonCenter,
-                std::max(g_slowTimeButtonRadius, 18.0f));
         
             for (const auto& center : g_slowTimeScopeCenters)
                 addCircle(center, std::max(g_slowTimeScopeRadius, 10.0f));
@@ -8785,6 +8822,16 @@ namespace Menu
 
         if (SettingsMenu::WheelSettingsMenu::IsOpen())
         {
+            // Sobre um item do Settings, a tecla do radial abre o editor do
+            // gesto em vez de fechar o menu.
+            if (!g_quickDrawEditorOpen && BeginQuickDrawEditor())
+                return;
+
+            // Enquanto o editor está aberto, a mesma tecla não fecha o
+            // Settings nem descarta o desenho em andamento.
+            if (g_quickDrawEditorOpen)
+                return;
+
             if (TrackEditor::IsOpen())
             {
                 TrackEditor::Cancel();
@@ -8864,6 +8911,20 @@ namespace Menu
 
         if (g_radialMode == RadialMode::Gameplay)
         {
+            // Soltar a tecla depois de desenhar decide a seleção por gesto.
+            // Se não houver correspondência suficiente, fecha como o fluxo
+            // normal, sem equipar um item acidentalmente.
+            if (g_quickDrawGameplayActive)
+            {
+                const bool matched = FinishQuickDrawGameplay();
+                if (matched)
+                    UseSelectedRadialItem();
+                g_quickDrawSelectionOverride = nullptr;
+                g_quickDrawSelectionSide = RadialSide::None;
+                CloseRadialMenu();
+                return;
+            }
+
             // Se o radial atual está travado, a primeira soltura
             // de G não deve equipar o item nem fechar o menu.
 
@@ -11866,18 +11927,20 @@ namespace Menu
 
     void UseSelectedRadialItem()
     {
-        if (g_radialSide == RadialSide::None)
+        if (g_radialSide == RadialSide::None && !g_quickDrawSelectionOverride)
             return;
 
         ImVec2 mousePos = GetRadialMousePosition();
 
-        RadialItem* selected = nullptr;
+        // O Quick Draw já encontrou a instância exata; isso evita depender
+        // da posição final do cursor no radial correspondente.
+        RadialItem* selected = g_quickDrawSelectionOverride;
 
         // ============================================================
         // DESCOBRE QUAL ITEM ESTÁ SELECIONADO
         // ============================================================
 
-        switch (g_radialSide)
+        if (!selected) switch (g_radialSide)
         {
         case RadialSide::Left:
         case RadialSide::Right:
@@ -11990,8 +12053,11 @@ namespace Menu
 
         RE::TESForm* form = selected->form;
 
-        const bool leftSide = g_radialSide == RadialSide::Left;
-        const bool rightSide = g_radialSide == RadialSide::Right;
+        const RadialSide actionSide = g_quickDrawSelectionOverride
+            ? g_quickDrawSelectionSide
+            : g_radialSide;
+        const bool leftSide = actionSide == RadialSide::Left;
+        const bool rightSide = actionSide == RadialSide::Right;
         (void)rightSide;
 
         // ============================================================
@@ -13683,6 +13749,532 @@ namespace Menu
         return RadialSide::Right;
     }
 
+    static QuickDrawKey MakeQuickDrawKey(const RadialItem& item)
+    {
+        return {
+            item.form ? item.form->GetFormID() : 0,
+            item.uniqueID,
+            item.hasUniqueID
+        };
+    }
+
+    static bool SameQuickDrawKey(const QuickDrawKey& a, const QuickDrawKey& b)
+    {
+        return a.formID == b.formID &&
+            a.hasUniqueID == b.hasUniqueID &&
+            (!a.hasUniqueID || a.uniqueID == b.uniqueID);
+    }
+
+    static std::vector<ImVec2>* FindQuickDrawStroke(const RadialItem& item)
+    {
+        const QuickDrawKey key = MakeQuickDrawKey(item);
+        if (!key.formID)
+            return nullptr;
+        for (auto& gesture : g_quickDrawGestures)
+        {
+            if (SameQuickDrawKey(gesture.key, key))
+                return &gesture.points;
+        }
+        return nullptr;
+    }
+
+    static void StoreQuickDrawStroke(const RadialItem& item,
+        const std::vector<ImVec2>& points)
+    {
+        const QuickDrawKey key = MakeQuickDrawKey(item);
+        if (!key.formID)
+            return;
+
+        auto it = std::find_if(g_quickDrawGestures.begin(),
+            g_quickDrawGestures.end(), [&](const QuickDrawGesture& gesture) {
+                return SameQuickDrawKey(gesture.key, key);
+            });
+
+        // Uma linha vazia significa que o usuário removeu o desenho.
+        if (points.empty())
+        {
+            if (it != g_quickDrawGestures.end())
+                g_quickDrawGestures.erase(it);
+            return;
+        }
+
+        if (it == g_quickDrawGestures.end())
+        {
+            g_quickDrawGestures.push_back({ key, points });
+        }
+        else
+        {
+            it->points = points;
+        }
+    }
+
+    static void AddQuickDrawPoint(std::vector<ImVec2>& points,
+        const ImVec2& position, const ImVec2& center, float radius)
+    {
+        if (radius <= 0.0f)
+            return;
+
+        ImVec2 point((position.x - center.x) / radius,
+            (position.y - center.y) / radius);
+        const float length = std::sqrt(point.x * point.x + point.y * point.y);
+        if (length > 1.0f)
+        {
+            point.x /= length;
+            point.y /= length;
+        }
+
+        // Evita gravar centenas de pontos iguais quando o mouse fica parado.
+        if (!points.empty())
+        {
+            const ImVec2& previous = points.back();
+            const float dx = point.x - previous.x;
+            const float dy = point.y - previous.y;
+            if (dx * dx + dy * dy < 0.00015f)
+                return;
+        }
+        points.push_back(point);
+    }
+
+    static std::vector<ImVec2> ResampleQuickDraw(const std::vector<ImVec2>& input,
+        std::size_t count)
+    {
+        if (input.empty() || count == 0)
+            return {};
+        if (input.size() == 1)
+            return std::vector<ImVec2>(count, input.front());
+
+        std::vector<float> accumulated(input.size(), 0.0f);
+        for (std::size_t i = 1; i < input.size(); ++i)
+        {
+            const float dx = input[i].x - input[i - 1].x;
+            const float dy = input[i].y - input[i - 1].y;
+            accumulated[i] = accumulated[i - 1] + std::sqrt(dx * dx + dy * dy);
+        }
+        const float total = accumulated.back();
+        if (total <= 0.0001f)
+            return std::vector<ImVec2>(count, input.front());
+
+        std::vector<ImVec2> result;
+        result.reserve(count);
+        for (std::size_t sample = 0; sample < count; ++sample)
+        {
+            const float distance = total * static_cast<float>(sample) /
+                static_cast<float>(count - 1);
+            std::size_t segment = 1;
+            while (segment < accumulated.size() && accumulated[segment] < distance)
+                ++segment;
+            if (segment >= accumulated.size())
+            {
+                result.push_back(input.back());
+                continue;
+            }
+            const float begin = accumulated[segment - 1];
+            const float span = std::max(0.0001f, accumulated[segment] - begin);
+            const float t = std::clamp((distance - begin) / span, 0.0f, 1.0f);
+            result.emplace_back(
+                input[segment - 1].x + (input[segment].x - input[segment - 1].x) * t,
+                input[segment - 1].y + (input[segment].y - input[segment - 1].y) * t);
+        }
+        return result;
+    }
+
+    static float QuickDrawSimilarity(const std::vector<ImVec2>& a,
+        const std::vector<ImVec2>& b)
+    {
+        // Pontos isolados não são gestos úteis: exigimos uma linha real.
+        if (a.size() < 2 || b.size() < 2)
+            return 0.0f;
+        constexpr std::size_t samples = 32;
+        auto normalize = [](std::vector<ImVec2> points) {
+            ImVec2 center{};
+            for (const auto& point : points)
+            {
+                center.x += point.x;
+                center.y += point.y;
+            }
+            center.x /= static_cast<float>(points.size());
+            center.y /= static_cast<float>(points.size());
+            float scale = 0.0f;
+            for (auto& point : points)
+            {
+                point.x -= center.x;
+                point.y -= center.y;
+                scale = std::max(scale, std::sqrt(point.x * point.x + point.y * point.y));
+            }
+            scale = std::max(scale, 0.04f);
+            for (auto& point : points)
+            {
+                point.x /= scale;
+                point.y /= scale;
+            }
+            return points;
+        };
+        const auto lhs = normalize(ResampleQuickDraw(a, samples));
+        const auto rhs = normalize(ResampleQuickDraw(b, samples));
+        auto score = [&](bool reversed) {
+            float distance = 0.0f;
+            for (std::size_t i = 0; i < samples; ++i)
+            {
+                const ImVec2& point = rhs[reversed ? samples - 1 - i : i];
+                const float dx = lhs[i].x - point.x;
+                const float dy = lhs[i].y - point.y;
+                distance += std::sqrt(dx * dx + dy * dy);
+            }
+            return std::clamp(1.0f - (distance / samples) / 1.50f, 0.0f, 1.0f);
+        };
+        // Mantém o gesto tolerante à direção em que o jogador o desenhou.
+        return std::max(score(false), score(true));
+    }
+
+    static void DrawQuickDrawStroke(ImDrawList* draw,
+        const std::vector<ImVec2>& points, const ImVec2& center,
+        float radius, ImU32 color, float thickness)
+    {
+        if (!draw || points.size() < 2)
+            return;
+        for (std::size_t i = 1; i < points.size(); ++i)
+        {
+            const ImVec2 a(center.x + points[i - 1].x * radius,
+                center.y + points[i - 1].y * radius);
+            const ImVec2 b(center.x + points[i].x * radius,
+                center.y + points[i].y * radius);
+            draw->AddLine(a, b, color, thickness);
+        }
+    }
+
+    static bool PointInQuickDrawRect(const ImVec2& point,
+        const ImVec2& min, const ImVec2& max)
+    {
+        return point.x >= min.x && point.x <= max.x &&
+            point.y >= min.y && point.y <= max.y;
+    }
+
+    static bool FinishQuickDrawGameplay()
+    {
+        if (!g_quickDrawGameplayActive)
+            return false;
+
+        RadialItem* bestItem = nullptr;
+        RadialSide bestSide = RadialSide::None;
+        float bestScore = QUICK_DRAW_MATCH_THRESHOLD;
+        const auto testItems = [&](std::vector<RadialItem>& items, RadialSide side) {
+            for (auto& item : items)
+            {
+                if (!item.valid || !item.form)
+                    continue;
+                const auto* stored = FindQuickDrawStroke(item);
+                if (!stored || stored->empty())
+                    continue;
+                const float score = QuickDrawSimilarity(g_quickDrawGameplayStroke, *stored);
+                if (score >= bestScore)
+                {
+                    bestScore = score;
+                    bestItem = &item;
+                    bestSide = side;
+                }
+            }
+        };
+
+        testItems(g_sideItems, RadialSide::Left);
+        testItems(g_topItems, RadialSide::Top);
+        testItems(g_bottomItems, RadialSide::Bottom);
+
+        g_quickDrawGameplayActive = false;
+        g_quickDrawGameplayDrawing = false;
+        g_quickDrawGameplayExpandT = 0.0f;
+        g_quickDrawGameplayStroke.clear();
+
+        if (!bestItem)
+            return false;
+
+        g_quickDrawSelectionOverride = bestItem;
+        g_quickDrawSelectionSide = bestSide;
+        spdlog::info("QUICK DRAW | matched {:08X} score={:.2f}",
+            bestItem->form->GetFormID(), bestScore);
+        return true;
+    }
+
+    bool BeginQuickDrawEditor()
+    {
+        if (!SettingsMenu::WheelSettingsMenu::IsOpen() ||
+            !g_settingsHoveredItem || g_settingsDrag.active)
+            return false;
+
+        g_quickDrawEditorItem = {};
+        g_quickDrawEditorItem.form = g_settingsHoveredItem;
+        g_quickDrawEditorItem.uniqueID = g_settingsHoveredUniqueID;
+        g_quickDrawEditorItem.hasUniqueID = g_settingsHoveredHasUniqueID;
+        g_quickDrawEditorItem.valid = true;
+        g_quickDrawEditorStroke.clear();
+        if (const auto* stored = FindQuickDrawStroke(g_quickDrawEditorItem))
+            g_quickDrawEditorStroke = *stored;
+        g_quickDrawEditorDrawing = false;
+        g_quickDrawEditorOpen = true;
+
+        // Todo gesto começa exatamente no centro do círculo. Reposicionamos
+        // também o cursor real para que o primeiro delta físico coincida com
+        // o desenho exibido, inclusive em ultrawide.
+        const ImVec2 center = Resolution::GetVirtualCenter();
+        g_settingsMousePos = center;
+        ImGui::GetIO().MousePos = center;
+        if (HWND hwnd = GetForegroundWindow())
+        {
+            RECT rect{};
+            if (GetWindowRect(hwnd, &rect))
+                SetCursorPos((rect.left + rect.right) / 2,
+                    (rect.top + rect.bottom) / 2);
+        }
+
+        // Mantém o preview 3D atual apontando para a instância exata.
+        g_settingsPreviewSelection = g_quickDrawEditorItem;
+        g_settingsPreviewSelectionActive = true;
+        g_settingsPreviewLastHoverTime = ImGui::GetTime();
+
+        spdlog::info("QUICK DRAW | editor opened for {:08X}",
+            g_quickDrawEditorItem.form->GetFormID());
+        return true;
+    }
+
+    bool IsQuickDrawEditorOpen()
+    {
+        return g_quickDrawEditorOpen;
+    }
+
+    static void DrawQuickDrawEditor(float alpha)
+    {
+        if (!g_quickDrawEditorOpen)
+            return;
+
+        const ImVec2 screen = ImGui::GetIO().DisplaySize;
+        const ImVec2 center(screen.x * 0.5f, screen.y * 0.5f);
+        auto* draw = ImGui::GetForegroundDrawList();
+        if (!draw)
+            return;
+
+        // A coleta dos pontos ocorre no render para acompanhar a posição
+        // física do cursor do Skyrim mesmo entre eventos de mouse.
+        if (g_quickDrawEditorDrawing)
+            AddQuickDrawPoint(g_quickDrawEditorStroke, g_settingsMousePos,
+                center, QUICK_DRAW_EDITOR_RADIUS);
+
+        draw->AddCircle(center, QUICK_DRAW_EDITOR_RADIUS,
+            FadeColor(IM_COL32(245, 245, 245, 205), alpha), 96, 1.8f);
+        DrawQuickDrawStroke(draw, g_quickDrawEditorStroke, center,
+            QUICK_DRAW_EDITOR_RADIUS,
+            FadeColor(IM_COL32(255, 255, 255, 240), alpha), 2.5f);
+
+        constexpr ImVec2 buttonSize(100.0f, 30.0f);
+        const float buttonsY = center.y + QUICK_DRAW_EDITOR_RADIUS + 28.0f;
+        g_quickDrawEditorResetMin = ImVec2(center.x - buttonSize.x - 8.0f, buttonsY);
+        g_quickDrawEditorResetMax = ImVec2(center.x - 8.0f, buttonsY + buttonSize.y);
+        g_quickDrawEditorOkMin = ImVec2(center.x + 8.0f, buttonsY);
+        g_quickDrawEditorOkMax = ImVec2(center.x + buttonSize.x + 8.0f, buttonsY + buttonSize.y);
+
+        const auto drawButton = [&](const ImVec2& min, const ImVec2& max,
+            const char* label) {
+            const bool hovered = PointInQuickDrawRect(g_settingsMousePos, min, max);
+            draw->AddRectFilled(min, max, hovered
+                ? FadeColor(IM_COL32(235, 235, 235, 225), alpha)
+                : FadeColor(IM_COL32(42, 42, 42, 205), alpha), 3.0f);
+            draw->AddRect(min, max, FadeColor(hovered
+                ? IM_COL32(215, 195, 150, 255)
+                : IM_COL32(190, 190, 190, 190), alpha), 3.0f, 0, 1.0f);
+            const ImVec2 text = ImGui::CalcTextSize(label);
+            draw->AddText(ImVec2((min.x + max.x - text.x) * 0.5f,
+                (min.y + max.y - text.y) * 0.5f),
+                FadeColor(hovered ? IM_COL32(25, 25, 25, 255) :
+                    IM_COL32(240, 240, 240, 255), alpha), label);
+        };
+        drawButton(g_quickDrawEditorResetMin, g_quickDrawEditorResetMax,
+            Language::Get("reset").c_str());
+        drawButton(g_quickDrawEditorOkMin, g_quickDrawEditorOkMax,
+            Language::Get("ok").c_str());
+
+        // O editor usa sempre a posição central, independentemente do layout
+        // configurado para o preview comum do Settings.
+        ItemPreview::SetHudPosition(center);
+        ItemPreview::SetSizeScale(1.0f);
+        ItemPreview::SilentPreviewMenu::Open();
+        ItemPreview::Show(g_quickDrawEditorItem.form,
+            g_quickDrawEditorItem.uniqueID,
+            g_quickDrawEditorItem.hasUniqueID);
+        DrawSettingsCursor();
+    }
+
+    bool HandleQuickDrawEditorMouseButton(int button, bool pressed)
+    {
+        if (!g_quickDrawEditorOpen)
+            return false;
+
+        // O editor é modal: evita que ambos os cliques executem comandos
+        // do Settings enquanto uma linha está sendo criada.
+        if (button != 0)
+            return true;
+
+        if (!pressed)
+        {
+            g_quickDrawEditorDrawing = false;
+            return true;
+        }
+
+        if (PointInQuickDrawRect(g_settingsMousePos,
+                g_quickDrawEditorResetMin, g_quickDrawEditorResetMax))
+        {
+            g_quickDrawEditorStroke.clear();
+            StoreQuickDrawStroke(g_quickDrawEditorItem, {});
+            return true;
+        }
+        if (PointInQuickDrawRect(g_settingsMousePos,
+                g_quickDrawEditorOkMin, g_quickDrawEditorOkMax))
+        {
+            StoreQuickDrawStroke(g_quickDrawEditorItem, g_quickDrawEditorStroke);
+            g_quickDrawEditorOpen = false;
+            g_quickDrawEditorDrawing = false;
+            return true;
+        }
+
+        // Cada novo clique inicia uma única linha e substitui a anterior.
+        g_quickDrawEditorStroke.clear();
+        g_quickDrawEditorDrawing = true;
+        const ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f,
+            ImGui::GetIO().DisplaySize.y * 0.5f);
+        g_settingsMousePos = center;
+        ImGui::GetIO().MousePos = center;
+        if (HWND hwnd = GetForegroundWindow())
+        {
+            RECT rect{};
+            if (GetWindowRect(hwnd, &rect))
+                SetCursorPos((rect.left + rect.right) / 2,
+                    (rect.top + rect.bottom) / 2);
+        }
+        // A primeira amostra é o centro mesmo que o evento do clique tenha
+        // chegado antes de o Windows confirmar o reposicionamento do cursor.
+        g_quickDrawEditorStroke.emplace_back(0.0f, 0.0f);
+        return true;
+    }
+
+    bool BeginQuickDrawGameplayStroke(int button, bool pressed)
+    {
+        if (g_radialMode != RadialMode::Gameplay || !g_showWindow ||
+            g_radialLocked || g_radialSide != RadialSide::None ||
+            (button != 0 && button != 1))
+            return false;
+
+        if (!pressed)
+        {
+            g_quickDrawGameplayDrawing = false;
+            return g_quickDrawGameplayActive;
+        }
+
+        g_quickDrawGameplayActive = true;
+        g_quickDrawGameplayDrawing = true;
+        g_quickDrawGameplayExpandT = 0.0f;
+        g_quickDrawGameplayStroke.clear();
+        const ImVec2 center = Resolution::GetVirtualCenter();
+        AddQuickDrawPoint(g_quickDrawGameplayStroke, GetRadialMousePosition(),
+            center, QUICK_DRAW_EDITOR_RADIUS);
+        return true;
+    }
+
+    bool IsQuickDrawGameplayActive()
+    {
+        return g_quickDrawGameplayActive;
+    }
+
+    void SaveQuickDraw(SKSE::SerializationInterface* serialization)
+    {
+        if (!serialization)
+            return;
+
+        const std::uint32_t count = static_cast<std::uint32_t>(
+            std::min<std::size_t>(g_quickDrawGestures.size(), 4096));
+        if (!serialization->WriteRecordData(&count, sizeof(count)))
+            return;
+
+        for (std::uint32_t i = 0; i < count; ++i)
+        {
+            const auto& gesture = g_quickDrawGestures[i];
+            const std::uint8_t hasUnique = gesture.key.hasUniqueID ? 1 : 0;
+            const std::uint16_t pointCount = static_cast<std::uint16_t>(
+                std::min<std::size_t>(gesture.points.size(), 2048));
+            if (!serialization->WriteRecordData(&gesture.key.formID, sizeof(RE::FormID)) ||
+                !serialization->WriteRecordData(&gesture.key.uniqueID, sizeof(std::uint16_t)) ||
+                !serialization->WriteRecordData(&hasUnique, sizeof(hasUnique)) ||
+                !serialization->WriteRecordData(&pointCount, sizeof(pointCount)))
+                return;
+            for (std::uint16_t point = 0; point < pointCount; ++point)
+            {
+                if (!serialization->WriteRecordData(&gesture.points[point], sizeof(ImVec2)))
+                    return;
+            }
+        }
+    }
+
+    bool LoadQuickDraw(SKSE::SerializationInterface* serialization,
+        std::uint32_t version, std::uint32_t)
+    {
+        g_quickDrawGestures.clear();
+        if (!serialization || version != 1)
+            return false;
+
+        std::uint32_t count = 0;
+        if (serialization->ReadRecordData(&count, sizeof(count)) != sizeof(count) ||
+            count > 4096)
+            return false;
+
+        g_quickDrawGestures.reserve(count);
+        for (std::uint32_t i = 0; i < count; ++i)
+        {
+            RE::FormID oldFormID = 0;
+            std::uint16_t uniqueID = 0;
+            std::uint8_t hasUnique = 0;
+            std::uint16_t pointCount = 0;
+            if (serialization->ReadRecordData(&oldFormID, sizeof(oldFormID)) != sizeof(oldFormID) ||
+                serialization->ReadRecordData(&uniqueID, sizeof(uniqueID)) != sizeof(uniqueID) ||
+                serialization->ReadRecordData(&hasUnique, sizeof(hasUnique)) != sizeof(hasUnique) ||
+                serialization->ReadRecordData(&pointCount, sizeof(pointCount)) != sizeof(pointCount) ||
+                pointCount > 2048)
+                return false;
+
+            std::uint32_t formID = 0;
+            if (!serialization->ResolveFormID(oldFormID, formID) || !formID)
+            {
+                // Ainda consumimos os pontos do registro inválido.
+                ImVec2 discarded{};
+                for (std::uint16_t point = 0; point < pointCount; ++point)
+                    if (serialization->ReadRecordData(&discarded, sizeof(discarded)) != sizeof(discarded))
+                        return false;
+                continue;
+            }
+
+            QuickDrawGesture gesture{};
+            gesture.key = { formID, uniqueID, hasUnique != 0 };
+            gesture.points.resize(pointCount);
+            for (auto& point : gesture.points)
+            {
+                if (serialization->ReadRecordData(&point, sizeof(point)) != sizeof(point))
+                    return false;
+            }
+            if (!gesture.points.empty())
+                g_quickDrawGestures.push_back(std::move(gesture));
+        }
+
+        spdlog::info("QUICK DRAW | loaded {} gestures", g_quickDrawGestures.size());
+        return true;
+    }
+
+    void ClearQuickDraw()
+    {
+        g_quickDrawGestures.clear();
+        g_quickDrawEditorOpen = false;
+        g_quickDrawEditorDrawing = false;
+        g_quickDrawGameplayActive = false;
+        g_quickDrawGameplayDrawing = false;
+        g_quickDrawGameplayExpandT = 0.0f;
+        g_quickDrawSelectionOverride = nullptr;
+        g_quickDrawSelectionSide = RadialSide::None;
+    }
+
     float GetRadialEdgeMargin()
     {
         // Retorna uma margem de segurança de 20 pixels da borda do monitor
@@ -13858,17 +14450,22 @@ namespace Menu
 
         ImGuiIO& io = ImGui::GetIO();
 
+        const bool quickDraw = g_quickDrawGameplayActive;
         const bool vertical =
             g_radialSide == RadialSide::Top ||
             g_radialSide == RadialSide::Bottom;
 
-        const float mouseSmooth = vertical
+        const float mouseSmooth = quickDraw
+            ? 1.0f
+            : vertical
             ? 0.15f
             : LayoutLerp(1.0f, 0.05f, Config::g_sideMouseSmooth);
-        const float mouseSensitivity = vertical
+        const float mouseSensitivity = quickDraw
+            ? 1.0f
+            : vertical
             ? 1.0f
             : std::clamp(Config::g_sideMouseSensitivity, 0.25f, 3.0f);
-        const float maxMouseStep = vertical ? 1.0f : 15.0f;
+        const float maxMouseStep = quickDraw ? 1000.0f : vertical ? 1.0f : 15.0f;
         const float maxMouseStepSq = maxMouseStep * maxMouseStep;
 
         // ============================================================
@@ -13971,7 +14568,9 @@ namespace Menu
         // LIMITE DO RADIAL
         // ============================================================
 
-        const float maxLength = GetMenuLineLength();
+        const float maxLength = g_quickDrawGameplayActive
+            ? QUICK_DRAW_EDITOR_RADIUS
+            : GetMenuLineLength();
 
         if (maxLength > 0.0f)
         {
@@ -19268,6 +19867,7 @@ namespace Menu
 
     static float DrawSettingsItemInfo(
         const ItemInfo::Data& info,
+        const RadialItem* radialItem,
         const ImVec2& position,
         float alpha,
         float panelWidth)
@@ -19352,6 +19952,29 @@ namespace Menu
         );
 
         y += 30.0f * descriptorScale;
+
+        // ========================================================
+        // QUICK DRAW SALVO
+        //
+        // Fica imediatamente abaixo do nome: antes da quantidade para
+        // itens físicos e antes do cabeçalho MAGIC para magias.
+        // ========================================================
+        if (radialItem)
+        {
+            if (const auto* gesture = FindQuickDrawStroke(*radialItem);
+                gesture && !gesture->empty())
+            {
+                const float gestureRadius = 44.0f * descriptorScale;
+                const ImVec2 gestureCenter(position.x + panelWidth * 0.5f,
+                    y + gestureRadius + 1.0f);
+                draw->AddCircle(gestureCenter, gestureRadius,
+                    FadeColor(IM_COL32(190, 190, 190, 115), alpha), 40, 1.0f);
+                DrawQuickDrawStroke(draw, *gesture, gestureCenter,
+                    gestureRadius, FadeColor(IM_COL32(245, 245, 245, 235), alpha),
+                    1.6f * descriptorScale);
+                y += (gestureRadius * 2.0f + 13.0f * descriptorScale);
+            }
+        }
 
         // ========================================================
         // FUNÇÃO AUXILIAR DE ATRIBUTOS
@@ -19686,6 +20309,7 @@ namespace Menu
     
     static void DrawSettingsItemInfoPanel(
         const ItemInfo::Data& info,
+        const RadialItem* radialItem,
         float alpha,
         const SettingsInfoPanel& panel)
     {
@@ -19787,6 +20411,7 @@ namespace Menu
         g_settingsInfoContentHeight =
             DrawSettingsItemInfo(
                 info,
+                radialItem,
                 contentPosition,
                 alpha,
                 contentWidth
@@ -20224,10 +20849,11 @@ namespace Menu
             return true;
         }
 
-        std::array<bool*, 3> blurScopes{
+        std::array<bool*, 4> blurScopes{
             &Config::g_blurTop,
             &Config::g_blurCentral,
-            &Config::g_blurBottom
+            &Config::g_blurBottom,
+            &Config::g_blurDraw
         };
         for (std::size_t i = 0; i < blurScopes.size(); ++i)
         {
@@ -20244,29 +20870,13 @@ namespace Menu
             }
         }
 
-        const float slowDx = g_settingsMousePos.x - g_slowTimeButtonCenter.x;
-        const float slowDy = g_settingsMousePos.y - g_slowTimeButtonCenter.y;
-        const float slowRadius = g_slowTimeButtonRadius + 3.0f;
-        
-        if (slowDx * slowDx + slowDy * slowDy <= slowRadius * slowRadius)
-        {
-            Config::g_slowTimeDuringRadialSelection =
-                !Config::g_slowTimeDuringRadialSelection;
-            if (!Config::g_slowTimeDuringRadialSelection)
-                Slowtime::End();
-            Config::SaveConfig();
-            return true;
-        }
-        
-        if (Config::g_slowTimeDuringRadialSelection &&
-            insideRect(g_slowTimeSliderMin, g_slowTimeSliderMax))
+        if (insideRect(g_slowTimeSliderMin, g_slowTimeSliderMax))
         {
             g_slowTimeSliderDragging = true;
             return true;
         }
         
-        if (Config::g_slowTimeDuringRadialSelection &&
-            insideRect(g_slowTimeResetHitbox.min, g_slowTimeResetHitbox.max))
+        if (insideRect(g_slowTimeResetHitbox.min, g_slowTimeResetHitbox.max))
         {
         
             Config::g_slowTimeMultiplier = 0.15f;
@@ -20275,16 +20885,15 @@ namespace Menu
             return true;
         }
         
-        if (Config::g_slowTimeDuringRadialSelection)
         {
-            std::array<bool*, 3> scopes{
+            std::array<bool*, 4> scopes{
                 &Config::g_slowTimeTop,
                 &Config::g_slowTimeCentral,
-                &Config::g_slowTimeBottom
+                &Config::g_slowTimeBottom,
+                &Config::g_slowTimeDraw
             };
             for (std::size_t i = 0; i < scopes.size(); ++i)
             {
-        
                 const float dx = g_settingsMousePos.x - g_slowTimeScopeCenters[i].x;
                 const float dy = g_settingsMousePos.y - g_slowTimeScopeCenters[i].y;
                 const float radius = g_slowTimeScopeRadius + 3.0f;
@@ -21142,10 +21751,8 @@ namespace Menu
         
         const char* blurTitle = Language::Get("blur").c_str();
         
-        const ImVec2 blurTitleSize = ImGui::CalcTextSize(blurTitle);
-        
         DrawTextWithShadow(draw,
-            ImVec2(x + (width - blurTitleSize.x) * 0.5f, blurTitleY),
+            ImVec2(x, blurTitleY),
             white, blurTitle, alpha);
         
         const float blurScopeY = blurTitleY + 25.0f * controlScale;
@@ -21153,24 +21760,27 @@ namespace Menu
         g_blurScopeRadius = buttonRadius * 0.5f;
         
         const float blurScopeSpacing = 20.0f * controlScale;
+        const float drawScopeGap = 24.0f * controlScale;
         
-        const float blurScopeStartX = x + width * 0.5f - blurScopeSpacing;
+        const float blurScopeStartX = x + g_blurScopeRadius;
         
-        const std::array<bool, 3> blurScopeValues{
-            Config::g_blurTop, Config::g_blurCentral, Config::g_blurBottom
+        const std::array<bool, 4> blurScopeValues{
+            Config::g_blurTop, Config::g_blurCentral, Config::g_blurBottom,
+            Config::g_blurDraw
         };
         
-        const std::array<const char*, 3> blurScopeLabels{
-            "slow_time_top", "slow_time_left_right", "slow_time_bottom"
+        const std::array<const char*, 4> blurScopeLabels{
+            "slow_time_top", "slow_time_left_right", "slow_time_bottom", "draw"
         };
         
         const char* blurScopeTooltip = nullptr;
         
         for (std::size_t i = 0; i < g_blurScopeCenters.size(); ++i)
         {
-            const ImVec2 center(
-                blurScopeStartX + blurScopeSpacing * static_cast<float>(i),
-                blurScopeY);
+            const float scopeX = i == 3
+                ? blurScopeStartX + blurScopeSpacing * 3.0f + drawScopeGap
+                : blurScopeStartX + blurScopeSpacing * static_cast<float>(i);
+            const ImVec2 center(scopeX, blurScopeY);
         
             g_blurScopeCenters[i] = center;
         
@@ -21193,56 +21803,40 @@ namespace Menu
         }
 
         const float slowOptionY = blurScopeY + 34.0f * controlScale;
-        
-        g_slowTimeButtonRadius = buttonRadius;
-        g_slowTimeButtonCenter = ImVec2(x + 13.0f * controlScale, slowOptionY);
-        
-        const float slowDx = g_settingsMousePos.x - g_slowTimeButtonCenter.x;
-        const float slowDy = g_settingsMousePos.y - g_slowTimeButtonCenter.y;
-        const bool slowHovered = slowDx * slowDx + slowDy * slowDy <=
-            buttonRadius * buttonRadius;
-        
-        draw->AddCircleFilled(g_slowTimeButtonCenter, buttonRadius,
-            FadeColor(Config::g_slowTimeDuringRadialSelection
-                ? IM_COL32(235, 235, 235, 140)
-                : IM_COL32(20, 20, 25, 235), alpha), 48);
-        draw->AddCircle(g_slowTimeButtonCenter,
-            buttonRadius + (slowHovered ? 2.0f : 0.0f),
-            FadeColor(IM_COL32(255, 255, 255, slowHovered ? 210 : 100), alpha),
-            48, 1.5f);
-        
+        const char* slowTitle = Language::Get("slowtime").c_str();
         DrawTextWithShadow(draw,
-            ImVec2(g_slowTimeButtonCenter.x + buttonRadius + 12.0f,
-                slowOptionY - ImGui::GetFontSize() * 0.5f),
-            white, Language::Get("slow_time_during_radial_selection").c_str(), alpha);
+            ImVec2(x, slowOptionY),
+            white, slowTitle, alpha);
 
-        const float scopeY = slowOptionY + 29.0f * controlScale;
+        const float scopeY = slowOptionY + 25.0f * controlScale;
         
         g_slowTimeScopeRadius = buttonRadius * 0.5f;
         
         const float scopeSpacing = 20.0f * controlScale;
         
-        const float scopeStartX = x + width * 0.5f - scopeSpacing;
+        const float scopeStartX = x + g_slowTimeScopeRadius;
         
-        const std::array<bool, 3> scopeValues{
+        const std::array<bool, 4> scopeValues{
             Config::g_slowTimeTop,
             Config::g_slowTimeCentral,
-            Config::g_slowTimeBottom
+            Config::g_slowTimeBottom,
+            Config::g_slowTimeDraw
         };
         
-        const std::array<const char*, 3> scopeLabels{
-            "slow_time_top", "slow_time_left_right", "slow_time_bottom"
+        const std::array<const char*, 4> scopeLabels{
+            "slow_time_top", "slow_time_left_right", "slow_time_bottom", "draw"
         };
         
         const char* slowScopeTooltip = nullptr;
         
-        const float scopeControlAlpha =
-            Config::g_slowTimeDuringRadialSelection ? 1.0f : 0.35f;
+        const float scopeControlAlpha = 1.0f;
         
         for (std::size_t i = 0; i < g_slowTimeScopeCenters.size(); ++i)
         {
-            const ImVec2 center(
-                scopeStartX + scopeSpacing * static_cast<float>(i), scopeY);
+            const float scopeX = i == 3
+                ? scopeStartX + scopeSpacing * 3.0f + drawScopeGap
+                : scopeStartX + scopeSpacing * static_cast<float>(i);
+            const ImVec2 center(scopeX, scopeY);
             g_slowTimeScopeCenters[i] = center;
         
             const float dx = g_settingsMousePos.x - center.x;
@@ -21291,7 +21885,7 @@ namespace Menu
             g_settingsMousePos.y >= g_slowTimeResetHitbox.min.y &&
             g_settingsMousePos.y <= g_slowTimeResetHitbox.max.y;
     
-        if (g_slowTimeSliderDragging && Config::g_slowTimeDuringRadialSelection)
+        if (g_slowTimeSliderDragging)
         {
             const float normalized = std::clamp(
                 (g_settingsMousePos.x - slowTrackMinX) / slowTrackWidth, 0.0f, 1.0f);
@@ -21301,7 +21895,7 @@ namespace Menu
         Config::g_slowTimeMultiplier = std::clamp(
             Config::g_slowTimeMultiplier, 0.1f, 0.8f);
     
-        const float slowControlAlpha = Config::g_slowTimeDuringRadialSelection ? 1.0f : 0.35f;
+        const float slowControlAlpha = 1.0f;
     
         DrawTextWithShadow(draw, ImVec2(x, slowLabelY),
             FadeColor(IM_COL32(235, 230, 215, 255), alpha * slowControlAlpha),
@@ -23606,6 +24200,14 @@ namespace Menu
             return;
         }
 
+        // Quick Draw é um editor modal mais leve que o Editor de trilhos:
+        // preserva somente o preview do item, círculo e ações Reset/OK.
+        if (g_quickDrawEditorOpen)
+        {
+            DrawQuickDrawEditor(alpha);
+            return;
+        }
+
         // ============================================================
         // HITBOXES
         // ============================================================
@@ -24077,6 +24679,7 @@ namespace Menu
 
                     DrawSettingsItemInfoPanel(
                         info,
+                        &previewItem,
                         alpha,
                         GetSettingsInfoPanel(
                             ImGui::GetIO().DisplaySize)
@@ -24486,6 +25089,7 @@ namespace Menu
 
         DrawSettingsItemInfoPanel(
             info,
+            nullptr,
             alpha,
             panel
         );
@@ -24563,6 +25167,14 @@ namespace Menu
         const bool settingsOpen =
             ui &&
             ui->IsMenuOpen("WheelSetting");
+
+        // Escape/fechamentos externos cancelam o editor modal sem salvar o
+        // traço parcial, evitando que ele reapareça preso na próxima abertura.
+        if (!settingsOpen && g_quickDrawEditorOpen)
+        {
+            g_quickDrawEditorOpen = false;
+            g_quickDrawEditorDrawing = false;
+        }
 
         if (settingsOpen)
         {
@@ -24686,7 +25298,7 @@ namespace Menu
 
         ImVec2 mouse = GetRadialMousePosition();
 
-        if (!g_radialLocked && g_showWindow)
+        if (!g_radialLocked && g_showWindow && !g_quickDrawGameplayActive)
         {
             RadialSide direction = GetRadialDirection(mouse, screenCenter);
 
@@ -24724,24 +25336,25 @@ namespace Menu
             }
         }
 
-        const bool slowTimeSideEnabled =
-            (g_radialSide == RadialSide::Top && Config::g_slowTimeTop) ||
-            ((g_radialSide == RadialSide::Left ||
-                g_radialSide == RadialSide::Right) && Config::g_slowTimeCentral) ||
-            (g_radialSide == RadialSide::Bottom && Config::g_slowTimeBottom);
+        const bool slowTimeSideEnabled = g_quickDrawGameplayActive
+            ? Config::g_slowTimeDraw
+            : (g_radialSide == RadialSide::Top && Config::g_slowTimeTop) ||
+              ((g_radialSide == RadialSide::Left ||
+                  g_radialSide == RadialSide::Right) && Config::g_slowTimeCentral) ||
+              (g_radialSide == RadialSide::Bottom && Config::g_slowTimeBottom);
     
         Slowtime::Update(
-            Config::g_slowTimeDuringRadialSelection &&
-                g_showWindow &&
+            g_showWindow &&
                 g_radialMode == RadialMode::Gameplay &&
                 slowTimeSideEnabled,
             Config::g_slowTimeMultiplier);
 
-        const bool blurSideEnabled =
-            (g_radialSide == RadialSide::Top && Config::g_blurTop) ||
-            ((g_radialSide == RadialSide::Left ||
-                g_radialSide == RadialSide::Right) && Config::g_blurCentral) ||
-            (g_radialSide == RadialSide::Bottom && Config::g_blurBottom);
+        const bool blurSideEnabled = g_quickDrawGameplayActive
+            ? Config::g_blurDraw
+            : (g_radialSide == RadialSide::Top && Config::g_blurTop) ||
+              ((g_radialSide == RadialSide::Left ||
+                  g_radialSide == RadialSide::Right) && Config::g_blurCentral) ||
+              (g_radialSide == RadialSide::Bottom && Config::g_blurBottom);
     
         SetGameplayBlurApplied(
             g_showWindow && g_radialMode == RadialMode::Gameplay &&
@@ -24797,10 +25410,22 @@ namespace Menu
             if (g_showWindow &&
                 !SettingsMenu::WheelSettingsMenu::IsOpen())
             {
+                const float selectorRadius = g_quickDrawGameplayActive
+                    ? [&]()
+                    {
+                        g_quickDrawGameplayExpandT = std::min(
+                            1.0f, g_quickDrawGameplayExpandT + deltaTime * 6.5f);
+                        const float t = g_quickDrawGameplayExpandT *
+                            g_quickDrawGameplayExpandT *
+                            (3.0f - 2.0f * g_quickDrawGameplayExpandT);
+                        return RADIAL_DEADZONE +
+                            (QUICK_DRAW_EDITOR_RADIUS - RADIAL_DEADZONE) * t;
+                    }()
+                    : RADIAL_DEADZONE;
                 // BORDA ORIGINAL
                 draw->AddCircle(
                     screenCenter,
-                    RADIAL_DEADZONE,
+                    selectorRadius,
                     FadeColor(
                         IM_COL32(255, 255, 255, 60),
                         centerVisualAlpha
@@ -24824,6 +25449,20 @@ namespace Menu
                     ),
                     64
                 );
+
+                if (g_quickDrawGameplayActive)
+                {
+                    if (g_quickDrawGameplayDrawing)
+                    {
+                        AddQuickDrawPoint(g_quickDrawGameplayStroke,
+                            GetRadialMousePosition(), screenCenter,
+                            QUICK_DRAW_EDITOR_RADIUS);
+                    }
+                    DrawQuickDrawStroke(draw, g_quickDrawGameplayStroke,
+                        screenCenter, QUICK_DRAW_EDITOR_RADIUS,
+                        FadeColor(IM_COL32(255, 255, 255, 235), centerVisualAlpha),
+                        2.5f);
+                }
             }
         }
         else
@@ -24838,7 +25477,10 @@ namespace Menu
             (g_radialSide == RadialSide::Left || g_radialSide == RadialSide::Right)))
         {
     
-            ImVec2 lineEnd = ClampPointToDistance(g_radialOrigin, mouse, GetMenuLineLength());
+            const float guideLength = g_quickDrawGameplayActive
+                ? QUICK_DRAW_EDITOR_RADIUS
+                : GetMenuLineLength();
+            ImVec2 lineEnd = ClampPointToDistance(g_radialOrigin, mouse, guideLength);
     
             const float guideAlpha = g_radialSide == RadialSide::None
                 ? centerVisualAlpha

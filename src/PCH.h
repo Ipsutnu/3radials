@@ -171,6 +171,17 @@ namespace Menu {
 
     bool SettingsRightClick();
     void ScrollSettingsRadial(int direction);
+
+    // Quick Draw: desenhos por item usados pelo seletor rápido.
+    bool BeginQuickDrawEditor();
+    bool IsQuickDrawEditorOpen();
+    bool HandleQuickDrawEditorMouseButton(int button, bool pressed);
+    bool BeginQuickDrawGameplayStroke(int button, bool pressed);
+    bool IsQuickDrawGameplayActive();
+    void SaveQuickDraw(SKSE::SerializationInterface* serialization);
+    bool LoadQuickDraw(SKSE::SerializationInterface* serialization,
+        std::uint32_t version, std::uint32_t length);
+    void ClearQuickDraw();
     
     struct RadialItem
     {

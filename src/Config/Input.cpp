@@ -762,6 +762,30 @@ RE::BSEventNotifyControl InputHandler::ProcessEvent(
         {
             const uint32_t mouseButton =
                 buttonEvent->GetIDCode();
+
+            // ========================================================
+            // QUICK DRAW - GAMEPLAY
+            //
+            // Enquanto o usuário ainda escolhe uma direção, os dois botões
+            // iniciam/terminam o gesto e não chegam aos controles do jogo.
+            // ========================================================
+            if (mouseButton == 0 || mouseButton == 1)
+            {
+                const bool firstDown = buttonEvent->IsDown() &&
+                    buttonEvent->GetRuntimeData().heldDownSecs <= 0.0f;
+                const bool released = !buttonEvent->IsPressed();
+                const bool quickDrawActive = Menu::IsQuickDrawGameplayActive();
+                const bool handled = firstDown
+                    ? Menu::BeginQuickDrawGameplayStroke(mouseButton, true)
+                    : released
+                        ? Menu::BeginQuickDrawGameplayStroke(mouseButton, false)
+                        : quickDrawActive;
+                if (handled)
+                {
+                    consumeButton(buttonEvent);
+                    continue;
+                }
+            }
             
             // ========================================================
             // SETTINGS - CLIQUES DO MOUSE
@@ -769,6 +793,23 @@ RE::BSEventNotifyControl InputHandler::ProcessEvent(
 
             if (settingsOpen)
             {
+
+                if (Menu::IsQuickDrawEditorOpen() &&
+                    (mouseButton == 0 || mouseButton == 1))
+                {
+                    const bool firstDown = buttonEvent->IsDown() &&
+                        buttonEvent->GetRuntimeData().heldDownSecs <= 0.0f;
+                    const bool released = !buttonEvent->IsPressed();
+                    const bool handled = (firstDown || released)
+                        ? Menu::HandleQuickDrawEditorMouseButton(
+                            static_cast<int>(mouseButton), !released)
+                        : true;
+                    if (handled)
+                    {
+                        consumeButton(buttonEvent);
+                        continue;
+                    }
+                }
 
                 // ====================================================
                 // BOTÃO ESQUERDO - LOCK / DRAG
