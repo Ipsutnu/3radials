@@ -106,6 +106,13 @@ float g_settingsTopologySettleRemaining = 0.0f;
 int g_pendingSettingsScroll = 0;
 float g_sideScrollStardustEnergy = 0.0f;
 
+// O input pode entregar vários notches antes do próximo frame. Guardar só o
+// offset final perde uma volta inteira quando ele volta ao mesmo índice (por
+// exemplo, cinco passos em um radial de cinco slots). Esta fila preserva cada
+// passo exclusivamente para a rotação do radial lateral no WheelSettings.
+std::deque<int> g_settingsSideScrollQueue;
+int g_settingsSideScrollAnimationDirection = 0;
+
 constexpr float INVENTORY_SNAP_DURATION = 0.20f;
 
 ImVec2 g_inventorySnapStart;
@@ -135,6 +142,8 @@ namespace Menu
 
     constexpr float PI = 3.14159265358979323846f;
     int g_sideScrollDirection = 0;
+    static void QueueSettingsSideScrollStep(int direction);
+    static void ProcessSettingsSideScrollQueue();
     static float g_settingsSideLockAnimatedX = 0.0f;
     static float g_settingsSideMouseAnimatedX = 0.0f;
     static float g_settingsPanelAnimatedMinX = 0.0f;
@@ -582,6 +591,9 @@ namespace Menu
 
     static bool g_quickDrawGameplayActive = false;
     static bool g_quickDrawGameplayDrawing = false;
+    // O botão que iniciou o gesto decide a mão de equipamento, não o radial
+    // onde o item estava salvo.
+    static bool g_quickDrawGameplayEquipLeft = false;
     static float g_quickDrawGameplayExpandT = 0.0f;
     static std::vector<ImVec2> g_quickDrawGameplayStroke;
     static RadialItem* g_quickDrawSelectionOverride = nullptr;
@@ -619,6 +631,7 @@ namespace Menu
     static bool g_settingsLeftReleased = false;
     static bool g_settingsRightPressed = false;
     static bool FinishQuickDrawGameplay();
+    static void CancelQuickDrawGameplay();
     void UseSelectedRadialItem();
     void DrawSettingsCursor();
 
@@ -6408,17 +6421,10 @@ namespace Menu
         {
             const int queuedDirection = g_pendingSettingsScroll < 0 ? -1 : 1;
             g_pendingSettingsScroll -= queuedDirection;
-            const int total = static_cast<int>(g_sideItems.size());
-            if (total >= 3 &&
-                (total > GetSideVisibleLimit() || !Config::g_lockSideScroll))
-            {
-                g_sideScrollDirection = queuedDirection < 0 ? -1 : 1;
-                g_sideScrollOffset = WrapSideIndex(
-                    g_sideScrollOffset + queuedDirection, total);
-                g_sideScrollStardustEnergy = std::min(
-                    3.0f, g_sideScrollStardustEnergy + 0.72f);
-            }
+            QueueSettingsSideScrollStep(queuedDirection);
         }
+
+        ProcessSettingsSideScrollQueue();
 
         // ============================================================
         // ATUALIZA CURSOR
@@ -6926,6 +6932,96 @@ namespace Menu
             );
 
         return inserted->second;
+    }
+
+    static void QueueSettingsSideScrollStep(int direction)
+    {
+        if (direction == 0)
+            return;
+
+        // Uma fila limitada preserva o gesto rápido sem permitir que uma roda
+        // física muito sensível deixe uma sequência antiga rodando por tempo
+        // indefinido depois que o jogador já parou.
+        constexpr std::size_t kMaxQueuedSideScrollSteps = 24;
+        if (g_settingsSideScrollQueue.size() >= kMaxQueuedSideScrollSteps)
+            return;
+
+        g_settingsSideScrollQueue.push_back(direction < 0 ? -1 : 1);
+    }
+
+    static bool IsSettingsSideScrollSettled()
+    {
+        const bool customCircuit = Config::g_customRadial &&
+            Track::HasValidSavedLayout() &&
+            static_cast<int>(g_sideItems.size()) > GetSideVisibleLimit();
+
+        for (const RadialItem& item : g_sideItems)
+        {
+            if (!item.form)
+                continue;
+
+            RadialItemAnimation& anim = GetOrCreateAnim(
+                item.form, item.uniqueID, item.hasUniqueID);
+            if (anim.settingsDropSettling || anim.settingsCustomDropEntering)
+                return false;
+
+            if (customCircuit)
+            {
+                const TrackMovement::State& state = anim.customTrackAnimation;
+                if (state.initialized && state.progress < 0.995f)
+                    return false;
+                continue;
+            }
+
+            // O Legacy não possui um contador de progresso. A posição e as
+            // velocidades do seu estado polar/cartesiano informam se o slot
+            // já terminou a transição antes de aceitarmos o próximo notch.
+            const RadialAnimation::State& state = anim.gameplayRadialAnimation;
+            if (!state.initialized)
+                continue;
+            const float dx = state.lastTarget.x - state.position.x;
+            const float dy = state.lastTarget.y - state.position.y;
+            const float distanceSq = dx * dx + dy * dy;
+            const float velocitySq = state.velocity.x * state.velocity.x +
+                state.velocity.y * state.velocity.y;
+            if (distanceSq > 1.0f || velocitySq > 4.0f ||
+                std::abs(state.angularVelocity) > 0.015f ||
+                std::abs(state.radialVelocity) > 0.50f)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static void ProcessSettingsSideScrollQueue()
+    {
+        if (!SettingsMenu::WheelSettingsMenu::IsOpen())
+        {
+            g_settingsSideScrollQueue.clear();
+            g_settingsSideScrollAnimationDirection = 0;
+            return;
+        }
+
+        if (g_settingsTopologySettleRemaining > 0.0f)
+        {
+            return;
+        }
+
+        if (g_settingsSideScrollQueue.empty())
+        {
+            // Após o último passo, devolvemos as mudanças normais de layout
+            // ao modo shortest-path. O arco dirigido só existe enquanto a
+            // sequência de scroll ainda está visualmente em andamento.
+            if (IsSettingsSideScrollSettled())
+                g_settingsSideScrollAnimationDirection = 0;
+            return;
+        }
+
+        const int direction = g_settingsSideScrollQueue.front();
+        g_settingsSideScrollQueue.pop_front();
+        g_settingsSideScrollAnimationDirection = direction;
+        ScrollSideRadial(direction);
     }
 
     static ImVec2 GetSettingsRepulsionPosition(
@@ -12053,10 +12149,15 @@ namespace Menu
 
         RE::TESForm* form = selected->form;
 
-        const RadialSide actionSide = g_quickDrawSelectionOverride
+        const bool quickDrawSelection = g_quickDrawSelectionOverride != nullptr;
+        const RadialSide actionSide = quickDrawSelection
             ? g_quickDrawSelectionSide
             : g_radialSide;
-        const bool leftSide = actionSide == RadialSide::Left;
+        // O gesto do Quick Draw escolhe explicitamente a mão pelo botão que
+        // iniciou o traço, independentemente do radial que continha o item.
+        const bool leftSide = quickDrawSelection
+            ? g_quickDrawGameplayEquipLeft
+            : actionSide == RadialSide::Left;
         const bool rightSide = actionSide == RadialSide::Right;
         (void)rightSide;
 
@@ -13823,10 +13924,17 @@ namespace Menu
             point.y /= length;
         }
 
-        // Evita gravar centenas de pontos iguais quando o mouse fica parado.
+        // Filtro leve: remove tremor de alta frequência, mas conserva curvas
+        // e cantos do gesto. Como os dois lados (editor/gameplay) usam a
+        // mesma coleta, a comparação continua consistente.
         if (!points.empty())
         {
             const ImVec2& previous = points.back();
+            constexpr float kSmoothing = 0.68f;
+            point.x = previous.x + (point.x - previous.x) * kSmoothing;
+            point.y = previous.y + (point.y - previous.y) * kSmoothing;
+
+            // Evita gravar centenas de pontos iguais quando o mouse fica parado.
             const float dx = point.x - previous.x;
             const float dy = point.y - previous.y;
             if (dx * dx + dy * dy < 0.00015f)
@@ -13994,6 +14102,23 @@ namespace Menu
         return true;
     }
 
+    static void CancelQuickDrawGameplay()
+    {
+        if (!g_quickDrawGameplayActive)
+            return;
+
+        // Encostar no limite expandido é um cancelamento explícito: não
+        // aguardamos a soltura da tecla principal e não avaliamos o gesto.
+        g_quickDrawGameplayActive = false;
+        g_quickDrawGameplayDrawing = false;
+        g_quickDrawGameplayExpandT = 0.0f;
+        g_quickDrawGameplayStroke.clear();
+        g_quickDrawSelectionOverride = nullptr;
+        g_quickDrawSelectionSide = RadialSide::None;
+        g_quickDrawGameplayEquipLeft = false;
+        CloseRadialMenu();
+    }
+
     bool BeginQuickDrawEditor()
     {
         if (!SettingsMenu::WheelSettingsMenu::IsOpen() ||
@@ -14046,8 +14171,11 @@ namespace Menu
             return;
 
         const ImVec2 screen = ImGui::GetIO().DisplaySize;
+        
         const ImVec2 center(screen.x * 0.5f, screen.y * 0.5f);
+        
         auto* draw = ImGui::GetForegroundDrawList();
+        
         if (!draw)
             return;
 
@@ -14059,12 +14187,15 @@ namespace Menu
 
         draw->AddCircle(center, QUICK_DRAW_EDITOR_RADIUS,
             FadeColor(IM_COL32(245, 245, 245, 205), alpha), 96, 1.8f);
+        
         DrawQuickDrawStroke(draw, g_quickDrawEditorStroke, center,
             QUICK_DRAW_EDITOR_RADIUS,
-            FadeColor(IM_COL32(255, 255, 255, 240), alpha), 2.5f);
+            FadeColor(IM_COL32(255, 255, 255, 240), alpha), 4.0f);
 
         constexpr ImVec2 buttonSize(100.0f, 30.0f);
+        
         const float buttonsY = center.y + QUICK_DRAW_EDITOR_RADIUS + 28.0f;
+        
         g_quickDrawEditorResetMin = ImVec2(center.x - buttonSize.x - 8.0f, buttonsY);
         g_quickDrawEditorResetMax = ImVec2(center.x - 8.0f, buttonsY + buttonSize.y);
         g_quickDrawEditorOkMin = ImVec2(center.x + 8.0f, buttonsY);
@@ -14073,13 +14204,17 @@ namespace Menu
         const auto drawButton = [&](const ImVec2& min, const ImVec2& max,
             const char* label) {
             const bool hovered = PointInQuickDrawRect(g_settingsMousePos, min, max);
+        
             draw->AddRectFilled(min, max, hovered
                 ? FadeColor(IM_COL32(235, 235, 235, 225), alpha)
                 : FadeColor(IM_COL32(42, 42, 42, 205), alpha), 3.0f);
+        
             draw->AddRect(min, max, FadeColor(hovered
                 ? IM_COL32(215, 195, 150, 255)
                 : IM_COL32(190, 190, 190, 190), alpha), 3.0f, 0, 1.0f);
+        
             const ImVec2 text = ImGui::CalcTextSize(label);
+        
             draw->AddText(ImVec2((min.x + max.x - text.x) * 0.5f,
                 (min.y + max.y - text.y) * 0.5f),
                 FadeColor(hovered ? IM_COL32(25, 25, 25, 255) :
@@ -14087,17 +14222,22 @@ namespace Menu
         };
         drawButton(g_quickDrawEditorResetMin, g_quickDrawEditorResetMax,
             Language::Get("reset").c_str());
+        
         drawButton(g_quickDrawEditorOkMin, g_quickDrawEditorOkMax,
             Language::Get("ok").c_str());
 
         // O editor usa sempre a posição central, independentemente do layout
         // configurado para o preview comum do Settings.
         ItemPreview::SetHudPosition(center);
+        
         ItemPreview::SetSizeScale(1.0f);
+        
         ItemPreview::SilentPreviewMenu::Open();
+        
         ItemPreview::Show(g_quickDrawEditorItem.form,
             g_quickDrawEditorItem.uniqueID,
             g_quickDrawEditorItem.hasUniqueID);
+        
         DrawSettingsCursor();
     }
 
@@ -14168,6 +14308,7 @@ namespace Menu
 
         g_quickDrawGameplayActive = true;
         g_quickDrawGameplayDrawing = true;
+        g_quickDrawGameplayEquipLeft = button == 0;
         g_quickDrawGameplayExpandT = 0.0f;
         g_quickDrawGameplayStroke.clear();
         const ImVec2 center = Resolution::GetVirtualCenter();
@@ -14271,6 +14412,7 @@ namespace Menu
         g_quickDrawGameplayActive = false;
         g_quickDrawGameplayDrawing = false;
         g_quickDrawGameplayExpandT = 0.0f;
+        g_quickDrawGameplayEquipLeft = false;
         g_quickDrawSelectionOverride = nullptr;
         g_quickDrawSelectionSide = RadialSide::None;
     }
@@ -16553,49 +16695,21 @@ namespace Menu
 
     void UpdateSideRadialScroll()
     {
-        if (!g_showWindow)
-            return;
-
-        if (g_radialSide != RadialSide::Left &&
-            g_radialSide != RadialSide::Right)
-        {
-            return;
-        }
-
-        const int totalItems =
-            static_cast<int>(g_sideItems.size());
-
-        if (totalItems < 3)
+        // O SKSE input sink é a única fonte de notches. Ler MouseWheel aqui
+        // também criava um segundo movimento direto em alguns setups, pulando
+        // slots sem informar a animação. A fila do WheelSettings é processada
+        // em ProcessSettingsEditor(), depois que a topologia estabiliza.
+        if (g_showWindow &&
+            (g_radialSide == RadialSide::Left ||
+             g_radialSide == RadialSide::Right) &&
+            g_sideItems.size() < 3)
         {
             g_sideScrollOffset = 0;
-            return;
         }
-
-        if (totalItems <= GetSideVisibleLimit() && Config::g_lockSideScroll)
-            return;
-
-        const float wheel = ImGui::GetIO().MouseWheel;
-
-        if (wheel == 0.0f)
-            return;
-
-        if (wheel < 0.0f)
+        if (!SettingsMenu::WheelSettingsMenu::IsOpen())
         {
-            g_sideScrollDirection = 1;
-            g_sideScrollOffset =
-                WrapSideIndex(
-                    g_sideScrollOffset + 1,
-                    totalItems
-                );
-        }
-        else
-        {
-            g_sideScrollDirection = -1;
-            g_sideScrollOffset =
-                WrapSideIndex(
-                    g_sideScrollOffset - 1,
-                    totalItems
-                );
+            g_settingsSideScrollQueue.clear();
+            g_settingsSideScrollAnimationDirection = 0;
         }
     }
 
@@ -17102,7 +17216,11 @@ namespace Menu
                         anim.gameplayRadialAnimation, routedPos, center, leftSide,
                         RadialAnimation::Layer::Main, deltaTime,
                         static_cast<RadialAnimation::Style>(std::clamp(
-                            Config::g_radialAnimation, 0, RadialAnimation::Count() - 1)));
+                            Config::g_radialAnimation, 0, RadialAnimation::Count() - 1)),
+                        // A fila do WheelSettings já aplica cada notch ao
+                        // offset. Forçar também um arco dirigido no Legacy
+                        // fazia um único notch parecer vários passos.
+                        0);
                 }
                 anim.previousPos = anim.currentPos;
                 anim.currentPos = itemPos;
@@ -17570,7 +17688,11 @@ namespace Menu
                             anim.gameplayRadialAnimation, routedOverflowPos, center, leftSide,
                             RadialAnimation::Layer::Overflow, deltaTime,
                             static_cast<RadialAnimation::Style>(std::clamp(
-                                Config::g_radialAnimation, 0, RadialAnimation::Count() - 1)));
+                                Config::g_radialAnimation, 0, RadialAnimation::Count() - 1)),
+                            // Idem para a camada excedente do Legacy: o
+                            // target normal resolve um passo; não o
+                            // reinterpretamos como uma rotação completa.
+                            0);
                     }
                     anim.previousPos = anim.currentPos;
                     anim.currentPos = overflowPos;
@@ -18783,14 +18905,7 @@ namespace Menu
             if (total <= GetSideVisibleLimit() && Config::g_lockSideScroll)
                 return;
 
-            g_sideScrollDirection = direction < 0 ? -1 : 1;
-
-            g_sideScrollOffset = WrapSideIndex(
-                g_sideScrollOffset + direction,
-                total
-            );
-            g_sideScrollStardustEnergy = std::min(
-                3.0f, g_sideScrollStardustEnergy + 0.72f);
+            QueueSettingsSideScrollStep(direction);
         }
     }
 
@@ -19956,22 +20071,27 @@ namespace Menu
         // ========================================================
         // QUICK DRAW SALVO
         //
-        // Fica imediatamente abaixo do nome: antes da quantidade para
-        // itens físicos e antes do cabeçalho MAGIC para magias.
+        // abaixo do nome: antes da quantidade para
+        // itens físicos e antes do cabeçalho para magias.
         // ========================================================
         if (radialItem)
         {
             if (const auto* gesture = FindQuickDrawStroke(*radialItem);
                 gesture && !gesture->empty())
             {
+            
                 const float gestureRadius = 44.0f * descriptorScale;
+            
                 const ImVec2 gestureCenter(position.x + panelWidth * 0.5f,
                     y + gestureRadius + 1.0f);
+            
                 draw->AddCircle(gestureCenter, gestureRadius,
                     FadeColor(IM_COL32(190, 190, 190, 115), alpha), 40, 1.0f);
+            
                 DrawQuickDrawStroke(draw, *gesture, gestureCenter,
                     gestureRadius, FadeColor(IM_COL32(245, 245, 245, 235), alpha),
                     1.6f * descriptorScale);
+            
                 y += (gestureRadius * 2.0f + 13.0f * descriptorScale);
             }
         }
@@ -25422,6 +25542,7 @@ namespace Menu
                             (QUICK_DRAW_EDITOR_RADIUS - RADIAL_DEADZONE) * t;
                     }()
                     : RADIAL_DEADZONE;
+                
                 // BORDA ORIGINAL
                 draw->AddCircle(
                     screenCenter,
@@ -25454,14 +25575,34 @@ namespace Menu
                 {
                     if (g_quickDrawGameplayDrawing)
                     {
-                        AddQuickDrawPoint(g_quickDrawGameplayStroke,
-                            GetRadialMousePosition(), screenCenter,
-                            QUICK_DRAW_EDITOR_RADIUS);
+                
+                        const ImVec2 drawMouse = GetRadialMousePosition();
+                
+                        const float dx = drawMouse.x - screenCenter.x;
+                
+                        const float dy = drawMouse.y - screenCenter.y;
+                
+                        // A borda do círculo expandido funciona como um gesto
+                        // de cancelar: encerra já, sem esperar soltar a tecla
+                        // First/Second e sem avaliar uma seleção.
+                        const float cancelRadius = std::max(1.0f, selectorRadius - 2.0f);
+                
+                        if (dx * dx + dy * dy >= cancelRadius * cancelRadius)
+                        {
+                            CancelQuickDrawGameplay();
+                        }
+                        else
+                        {
+                            AddQuickDrawPoint(g_quickDrawGameplayStroke,
+                                drawMouse, screenCenter,
+                                QUICK_DRAW_EDITOR_RADIUS);
+                        }
                     }
+                
                     DrawQuickDrawStroke(draw, g_quickDrawGameplayStroke,
                         screenCenter, QUICK_DRAW_EDITOR_RADIUS,
                         FadeColor(IM_COL32(255, 255, 255, 235), centerVisualAlpha),
-                        2.5f);
+                        4.0f);
                 }
             }
         }

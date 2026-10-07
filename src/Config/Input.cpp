@@ -1054,18 +1054,6 @@ RE::BSEventNotifyControl InputHandler::ProcessEvent(
                             );
                         }
 
-                        // ====================================================
-                        // LEFT / RIGHT
-                        // ====================================================
-
-                        else if (
-                            g_radialSide == RadialSide::Left ||
-                            g_radialSide == RadialSide::Right)
-                        {
-                            Menu::ScrollSideRadial(
-                                scrollDelta > 0.0f ? -1 : 1
-                            );
-                        }
                     }
 
                     // ========================================================

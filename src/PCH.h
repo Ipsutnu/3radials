@@ -10,6 +10,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <deque>
 #include <cfloat>
 #include <unordered_set>
 #include <ShlObj.h>
