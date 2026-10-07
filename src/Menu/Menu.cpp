@@ -14190,7 +14190,7 @@ namespace Menu
         
         DrawQuickDrawStroke(draw, g_quickDrawEditorStroke, center,
             QUICK_DRAW_EDITOR_RADIUS,
-            FadeColor(IM_COL32(255, 255, 255, 240), alpha), 4.0f);
+            FadeColor(IM_COL32(255, 255, 255, 240), alpha), 5.0f);
 
         constexpr ImVec2 buttonSize(100.0f, 30.0f);
         
@@ -25602,7 +25602,7 @@ namespace Menu
                     DrawQuickDrawStroke(draw, g_quickDrawGameplayStroke,
                         screenCenter, QUICK_DRAW_EDITOR_RADIUS,
                         FadeColor(IM_COL32(255, 255, 255, 235), centerVisualAlpha),
-                        4.0f);
+                        5.0f);
                 }
             }
         }
