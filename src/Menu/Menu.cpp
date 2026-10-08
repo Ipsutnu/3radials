@@ -503,6 +503,7 @@ namespace Menu
         // antes de remover a instância para distinguir corretamente uma
         // peça principal de uma excedente mesmo quando o anel está girado.
         int sideScrollOffsetBeforeRemoval = 0;
+
     };
 
     static std::vector<SettingsItemHitbox>
@@ -624,6 +625,8 @@ namespace Menu
     static ImU32 MakeGameplayIconColor(const RadialItem& item, int alpha,
         float brightness = 1.0f, bool applyBaseOpacity = true,
         RadialSide side = RadialSide::Left);
+    static void DrawSettingsDragQuickDrawIndicator(
+        ImDrawList* draw, const ImVec2& position, float radius);
 
     // Eventos recebidos pelo InputSink.
     // Serão processados dentro do DrawSettingsMenu().
@@ -5599,6 +5602,7 @@ namespace Menu
             pos.x += (target.x - pos.x) * factor;
             pos.y += (target.y - pos.y) * factor;
 
+
             const float dx = target.x - pos.x;
             const float dy = target.y - pos.y;
 
@@ -5619,11 +5623,13 @@ namespace Menu
             g_settingsMousePos.y + g_settingsDrag.offset.y
         );
 
+
         g_settingsDrag.position.x +=
             (target.x - g_settingsDrag.position.x) * factor;
 
         g_settingsDrag.position.y +=
             (target.y - g_settingsDrag.position.y) * factor;
+
     }
 
     static RadialSide GetSettingsDropSide(
@@ -6637,6 +6643,10 @@ namespace Menu
                     g_settingsDrag.sourceSide)
             );
         }
+
+        // Mantém o mesmo indicador de Quick Draw do slot enquanto a instância
+        // está sendo arrastada, sem reiniciar sua órbita nem sua cauda.
+        DrawSettingsDragQuickDrawIndicator(draw, position, radius);
     }
 
     //=======================
@@ -15658,10 +15668,14 @@ namespace Menu
         // O valor é compartilhado pelos itens apenas como semente; velocidade,
         // fase e sentido continuam únicos para cada um.
         static bool wasSettingsOpen = false;
+        
         static std::uint32_t orbitSession = 0;
+        
         const bool settingsOpen = SettingsMenu::WheelSettingsMenu::IsOpen();
+        
         if (settingsOpen && !wasSettingsOpen)
             ++orbitSession;
+        
         wasSettingsOpen = settingsOpen;
 
         if (!draw ||
@@ -15670,39 +15684,15 @@ namespace Menu
             return;
 
         const auto* stroke = FindQuickDrawStroke(item);
+        
         if (!stroke || stroke->empty())
             return;
 
-        // Esta é a direção usada pelo contador, isto é, voltada para dentro
-        // do radial. O indicador fica exatamente na direção contrária.
-        float dx = 0.0f;
-        float dy = 0.0f;
-        switch (directionMode)
-        {
-        case QuantityBadgeDirection::Up:
-            dy = -1.0f;
-            break;
-        case QuantityBadgeDirection::Down:
-            dy = 1.0f;
-            break;
-        case QuantityBadgeDirection::AutoToCenter:
-        default:
-        {
-            dx = radialCenter.x - itemPos.x;
-            dy = radialCenter.y - itemPos.y;
-            const float distance = std::sqrt(dx * dx + dy * dy);
-            if (distance > 0.001f)
-            {
-                dx /= distance;
-                dy /= distance;
-            }
-            else
-            {
-                dy = 1.0f;
-            }
-            break;
-        }
-        }
+        // A órbita é local ao próprio item. O radial de origem/destino não
+        // participa da direção inicial: isso evita aceleração e teleporte ao
+        // arrastar entre Side, Top e Bottom.
+        (void)radialCenter;
+        (void)directionMode;
 
         // Mantém a mesma distância-base do contador de quantidade. Quando o
         // contador não é exibido (quantidade 1), o ponto ainda conserva uma
@@ -15743,13 +15733,18 @@ namespace Menu
         // o menu está aberto.
         std::uint32_t orbitSeed = seed ^
             (orbitSession * 0x9E3779B9u + 0x7F4A7C15u);
+        
         orbitSeed ^= orbitSeed >> 16;
         orbitSeed *= 0x7FEB352Du;
         orbitSeed ^= orbitSeed >> 15;
+        
         const float orbitVariation =
             static_cast<float>(orbitSeed & 0xFFFFu) / 65535.0f;
+        
         const float orbitSpeed = 0.36f * (0.60f + 0.80f * orbitVariation);
+        
         const float orbitDirection = (orbitSeed & 0x10000u) ? 1.0f : -1.0f;
+        
         const float orbitAngle = orbitDirection *
             (time * orbitSpeed +
                 static_cast<float>((orbitSeed >> 17) % 628u) * 0.01f);
@@ -15761,12 +15756,15 @@ namespace Menu
             std::sin(time * 1.25f + phase) * 1.35f * floatScale,
             std::cos(time * 1.05f + phase * 1.37f) * 1.65f * floatScale);
         
-        // Gira o vetor externo, preservando a distância que o marcador já
-        // tinha do ícone. A pequena flutuação própria vem por cima da órbita.
-        const float baseX = -dx * offset;
-        const float baseY = -dy * offset;
+        // Vetor inicial aleatório por item/sessão, sempre local ao ícone.
+        // `orbitAngle` já inclui a fase aleatória e a rotação contínua.
+        const float baseX = offset;
+        const float baseY = 0.0f;
+        
         const float orbitCos = std::cos(orbitAngle);
+        
         const float orbitSin = std::sin(orbitAngle);
+        
         const ImVec2 markerPos(
             itemPos.x + baseX * orbitCos - baseY * orbitSin + ownFloat.x,
             itemPos.y + baseX * orbitSin + baseY * orbitCos + ownFloat.y);
@@ -15782,6 +15780,135 @@ namespace Menu
         
         const float indicatorAlpha =
             alpha * (isOverflow ? 0.50f : 0.80f) * pulse;
+
+        // Histórico real da posição do marcador. A cauda não é mais uma
+        // projeção matemática do arco: cada segmento ocupa uma posição onde
+        // a bolinha realmente esteve. Isso conserva a órbita parada e cria
+        // curvas naturais quando o item é arrastado.
+        struct TrailPoint
+        {
+            ImVec2 position{};
+            float time = 0.0f;
+        };
+        struct IndicatorTrail
+        {
+            QuickDrawKey key{};
+            ImVec2 radialCenter{};
+            std::vector<TrailPoint> points;
+            float lastSeenTime = 0.0f;
+            int lastSampleFrame = -1;
+        };
+        static std::vector<IndicatorTrail> indicatorTrails;
+        static std::uint32_t trailSession = 0;
+        if (trailSession != orbitSession)
+        {
+            indicatorTrails.clear();
+            trailSession = orbitSession;
+        }
+
+        const QuickDrawKey quickDrawKey = MakeQuickDrawKey(item);
+        const auto sameCenter = [&](const ImVec2& a, const ImVec2& b) {
+            const float x = a.x - b.x;
+            const float y = a.y - b.y;
+            return x * x + y * y < 1.0f;
+        };
+        auto trailIt = std::find_if(indicatorTrails.begin(), indicatorTrails.end(),
+            [&](const IndicatorTrail& trail) {
+                return SameQuickDrawKey(trail.key, quickDrawKey) &&
+                    sameCenter(trail.radialCenter, radialCenter);
+            });
+        if (trailIt == indicatorTrails.end())
+        {
+            IndicatorTrail trail{};
+            trail.key = quickDrawKey;
+            trail.radialCenter = radialCenter;
+
+            // Ao soltar em outro radial, reaproveita e translada o histórico
+            // mais recente da mesma instância. Assim a cauda chega ao slot
+            // novo sem teletransportar ou perder a curva do arrasto.
+            auto donor = std::max_element(indicatorTrails.begin(), indicatorTrails.end(),
+                [&](const IndicatorTrail& a, const IndicatorTrail& b) {
+                    const bool aMatch = SameQuickDrawKey(a.key, quickDrawKey);
+                    const bool bMatch = SameQuickDrawKey(b.key, quickDrawKey);
+                    if (aMatch != bMatch)
+                        return !aMatch;
+                    return a.lastSeenTime < b.lastSeenTime;
+                });
+            if (donor != indicatorTrails.end() &&
+                SameQuickDrawKey(donor->key, quickDrawKey) &&
+                !donor->points.empty() && time - donor->lastSeenTime < 0.25f)
+            {
+                const ImVec2 delta(
+                    markerPos.x - donor->points.front().position.x,
+                    markerPos.y - donor->points.front().position.y);
+                trail.points = donor->points;
+                for (auto& point : trail.points)
+                {
+                    point.position.x += delta.x;
+                    point.position.y += delta.y;
+                }
+            }
+            else
+            {
+                trail.points.push_back({ markerPos, time });
+            }
+            indicatorTrails.push_back(std::move(trail));
+            trailIt = std::prev(indicatorTrails.end());
+        }
+
+        IndicatorTrail& trail = *trailIt;
+        trail.lastSeenTime = time;
+        const int frame = ImGui::GetFrameCount();
+        if (trail.lastSampleFrame != frame)
+        {
+            const bool needsSample = trail.points.empty() ||
+                std::hypot(markerPos.x - trail.points.front().position.x,
+                    markerPos.y - trail.points.front().position.y) > 0.35f;
+            if (needsSample)
+                trail.points.insert(trail.points.begin(), { markerPos, time });
+            trail.lastSampleFrame = frame;
+        }
+        constexpr std::size_t maxTrailPoints = 720;
+        if (trail.points.size() > maxTrailPoints)
+            trail.points.resize(maxTrailPoints);
+
+        // Mantém o comprimento-base/variação que já estavam configurados.
+        const float tailVariation = 0.50f +
+            static_cast<float>((orbitSeed >> 1) & 0xFFFFu) / 65535.0f;
+        const float tailLength = 100.0f * tailVariation * floatScale;
+        ImVec2 tailPrevious = markerPos;
+        float tailDistance = 0.0f;
+        for (const TrailPoint& point : trail.points)
+        {
+            const float dx = point.position.x - tailPrevious.x;
+            const float dy = point.position.y - tailPrevious.y;
+            const float segmentLength = std::sqrt(dx * dx + dy * dy);
+            if (segmentLength <= 0.001f)
+                continue;
+
+            const float remaining = tailLength - tailDistance;
+            if (remaining <= 0.001f)
+                break;
+            const float usedLength = std::min(segmentLength, remaining);
+            const float segmentT = usedLength / segmentLength;
+            const ImVec2 tailPoint(
+                tailPrevious.x + dx * segmentT,
+                tailPrevious.y + dy * segmentT);
+            const float progress = std::clamp(
+                tailDistance / std::max(tailLength, 0.001f), 0.0f, 1.0f);
+            const float tailAlpha = indicatorAlpha * 0.70f *
+                std::pow(1.0f - progress, 1.35f);
+            if (tailAlpha > 0.001f)
+            {
+                draw->AddLine(
+                    tailPrevious,
+                    tailPoint,
+                    FadeColor(IM_COL32(255, 255, 255, 255), tailAlpha),
+                    1.25f * floatScale);
+            }
+            tailPrevious = tailPoint;
+            tailDistance += usedLength;
+        }
         
         draw->AddCircleFilled(
             ImVec2(markerPos.x + 1.35f, markerPos.y + 1.35f),
@@ -15801,6 +15928,38 @@ namespace Menu
             FadeColor(IM_COL32(255, 255, 255, 100), indicatorAlpha),
             24,
             1.0f);
+    }
+
+    static void DrawSettingsDragQuickDrawIndicator(
+        ImDrawList* draw,
+        const ImVec2& position,
+        float radius)
+    {
+        if (!g_settingsDrag.active || !g_settingsDrag.form)
+            return;
+
+        const WheelLayout layout = GetWheelLayout();
+        const ImVec2 sourceCenter =
+            g_settingsDrag.sourceSide == RadialSide::Top ? layout.topRadial :
+            g_settingsDrag.sourceSide == RadialSide::Bottom ? layout.bottomRadial :
+            g_settingsDrag.sourceSide == RadialSide::Right ? layout.rightRadial :
+            layout.leftRadial;
+        const ItemInfo::Data info = ItemInfo::Get(
+            g_settingsDrag.item.form,
+            g_settingsDrag.item.uniqueID,
+            g_settingsDrag.item.hasUniqueID);
+
+        DrawQuickDrawIndicator(
+            draw,
+            g_settingsDrag.item,
+            position,
+            sourceCenter,
+            radius,
+            info.instanceQuantity,
+            1.0f,
+            0.0f,
+            false,
+            QuantityBadgeDirection::AutoToCenter);
     }
 
     
@@ -16235,13 +16394,19 @@ namespace Menu
         float brightness, bool applyBaseOpacity, RadialSide side)
     {
         const ImVec4 tint = GetGameplayIconColor(item);
+        
         const ItemVisualStyle style = GetItemVisualStyle(side);
+        
         const float baseR = static_cast<float>((style.iconColor >> 16) & 0xFF) / 255.0f;
+        
         const float baseG = static_cast<float>((style.iconColor >> 8) & 0xFF) / 255.0f;
+        
         const float baseB = static_cast<float>(style.iconColor & 0xFF) / 255.0f;
+        
         if (applyBaseOpacity)
             alpha = static_cast<int>(alpha *
                 std::clamp(style.iconOpacity * 0.01f, 0.0f, 1.0f));
+        
         return IM_COL32(
             static_cast<int>(std::clamp(tint.x * baseR * brightness, 0.0f, 1.0f) * 255.0f),
             static_cast<int>(std::clamp(tint.y * baseG * brightness, 0.0f, 1.0f) * 255.0f),
@@ -16262,22 +16427,28 @@ namespace Menu
             anim.previousPos = target;
             anim.posInitialized = true;
             anim.settingsDropSettling = false;
+            
             return target;
         }
 
         const float factor = 1.0f - std::exp(-7.5f *
             std::clamp(deltaTime, 0.0f, 1.0f / 30.0f));
+        
         anim.previousPos = anim.currentPos;
+        
         anim.currentPos.x += (target.x - anim.currentPos.x) * factor;
         anim.currentPos.y += (target.y - anim.currentPos.y) * factor;
+        
         const float dx = target.x - anim.currentPos.x;
         const float dy = target.y - anim.currentPos.y;
+        
         if (dx * dx + dy * dy < 0.25f)
         {
             anim.currentPos = target;
             anim.previousPos = target;
             anim.settingsDropSettling = false;
         }
+        
         return anim.currentPos;
     }
 
@@ -16291,12 +16462,16 @@ namespace Menu
         // Interpolamos somente a apresentação de entrada, sem alterar a
         // posição lógica do circuito nem reintroduzir o slot de origem.
         constexpr float kEntryDuration = 0.20f;
+        
         anim.settingsCustomDropProgress = std::min(
             1.0f,
             anim.settingsCustomDropProgress +
                 std::clamp(deltaTime, 0.0f, 1.0f / 30.0f) / kEntryDuration);
+        
         const float t = anim.settingsCustomDropProgress;
+        
         const float smoothT = t * t * (3.0f - 2.0f * t);
+        
         const ImVec2 position(
             anim.settingsCustomDropStart.x +
                 (target.x - anim.settingsCustomDropStart.x) * smoothT,
@@ -16308,6 +16483,7 @@ namespace Menu
             anim.settingsCustomDropEntering = false;
             anim.settingsDropSettling = false;
         }
+        
         return position;
     }
 
@@ -16320,11 +16496,15 @@ namespace Menu
         // Termina antes do snap (0,20 s), para nenhum estado de acomodação
         // sobreviver ao fechamento automático do radial de inventário.
         constexpr float duration = 0.18f;
+        
         anim.inventoryDropProgress = std::min(1.0f,
             anim.inventoryDropProgress +
                 std::clamp(deltaTime, 0.0f, 1.0f / 30.0f) / duration);
+        
         const float t = anim.inventoryDropProgress;
+        
         const float smooth = t * t * (3.0f - 2.0f * t);
+        
         const ImVec2 result(
             anim.inventoryDropStart.x +
                 (target.x - anim.inventoryDropStart.x) * smooth,
@@ -16342,6 +16522,7 @@ namespace Menu
             anim.previousPos = target;
             anim.currentPos = target;
         }
+        
         return anim.currentPos;
     }
 
@@ -16371,19 +16552,24 @@ namespace Menu
         }
 
         constexpr float duration = 0.18f;
+        
         anim.inventorySideProgress[side] = std::min(
             1.0f,
             anim.inventorySideProgress[side] +
                 std::clamp(deltaTime, 0.0f, 1.0f / 30.0f) / duration);
 
         const float t = anim.inventorySideProgress[side];
+        
         const float smooth = t * t * (3.0f - 2.0f * t);
+        
         const ImVec2& start = anim.inventorySideStart[side];
+        
         ImVec2 result(
             start.x + (target.x - start.x) * smooth,
             start.y + (target.y - start.y) * smooth);
 
         anim.inventorySidePosition[side] = result;
+        
         if (anim.inventorySideProgress[side] >= 1.0f)
         {
             anim.inventorySideSettling[side] = false;
@@ -16391,6 +16577,7 @@ namespace Menu
             anim.inventorySidePosition[side] = target;
             result = target;
         }
+        
         return result;
     }
 
@@ -25520,8 +25707,6 @@ namespace Menu
 
         ImGui::PopStyleVar();
 
-        DrawSettingsCursor();
-
         // ============================================================
         // INTERAÇÃO
         // ============================================================
@@ -25794,6 +25979,9 @@ namespace Menu
         //}
 
         DrawSettingsDraggedItem();
+        // O cursor é a camada final do WheelSettings: durante o drag ele
+        // permanece visível acima do item carregado.
+        DrawSettingsCursor();
 
         // ============================================================
         // INDICADOR DE EDIÇÃO
