@@ -832,6 +832,7 @@ namespace Track
                     mainRail[std::min(sample, mainRail.size() - 1)]);
             }
         }
+
         for (std::size_t i = 0; i < mainPositions.size(); ++i)
         {
             pending.push_back({ CircuitSlot{ mainPositions[i], true, 0 },

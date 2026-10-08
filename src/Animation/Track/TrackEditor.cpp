@@ -1778,32 +1778,19 @@ namespace TrackEditor
                 const auto previewSlots = Track::CircuitSlots(layout,
                     center, radius, true, mainVisibleCount, overflowCount,
                     CurrentRadialShape());
-                std::vector<float> freshFractions;
                 std::vector<ImVec2> slotPositions;
-                freshFractions.reserve(previewSlots.size());
                 slotPositions.reserve(previewSlots.size());
                 for (const auto& slot : previewSlots)
-                {
-                    freshFractions.push_back(slot.circuitT);
                     slotPositions.push_back(slot.position);
-                }
-                std::vector<float> slotFractions;
                 if (transformingPiece && g_previewSlotsFrozen)
                 {
-                    slotFractions = freshFractions;
                     // Só os itens internos do radial principal conservam a
-                    // distância anterior. Terminais e todos os excedentes
-                    // continuam livres para acompanhar a peça e recalcular
-                    // proximidade em tempo real.
-                    std::size_t frozenMain = 0;
+                    // posição anterior. Terminais e todos os excedentes
+                    // continuam livres para acompanhar a peça em tempo real.
                     std::size_t frozenMainPosition = 0;
                     for (std::size_t i = 0; i < previewSlots.size(); ++i)
                     {
                         if (!previewSlots[i].main) continue;
-                        if (!previewSlots[i].terminal &&
-                            frozenMain < g_frozenPreviewSlotT.size())
-                            slotFractions[i] = g_frozenPreviewSlotT[frozenMain];
-                        if (!previewSlots[i].terminal) ++frozenMain;
                         if (frozenMainPosition < g_frozenPreviewMainPositions.size())
                             slotPositions[i] =
                                 g_frozenPreviewMainPositions[frozenMainPosition];
@@ -1812,7 +1799,6 @@ namespace TrackEditor
                 }
                 else
                 {
-                    slotFractions = freshFractions;
                     if (transformingPiece)
                     {
                         g_frozenPreviewSlotT.clear();
@@ -1823,7 +1809,7 @@ namespace TrackEditor
                         for (const auto& slot : previewSlots)
                             if (slot.main)
                                 g_frozenPreviewMainPositions.push_back(slot.position);
-                        g_previewSlotsFrozen = !slotFractions.empty();
+                        g_previewSlotsFrozen = !slotPositions.empty();
                     }
                     else
                     {
@@ -1838,17 +1824,16 @@ namespace TrackEditor
                     }
                 }
 
-                if (!slotFractions.empty() && circuitLength > 0.001f)
+                // CircuitSlot::position é a referência visual única do
+                // Editor e do WheelSettings. Reconstruir a posição a partir
+                // de circuitT fazia o preview atravessar o trilho externo
+                // mesmo quando não havia excedentes.
+                if (slotPositions.size() == editorIcons.size())
                 {
-                    std::vector<float> slotDistances;
-                    slotDistances.reserve(slotFractions.size());
-                    for (const float fraction : slotFractions)
-                        slotDistances.push_back(fraction * circuitLength);
-
                     const float dt = std::clamp(ImGui::GetIO().DeltaTime, 0.0f, 0.05f);
                     g_previewPhase += (g_previewTargetPhase - g_previewPhase) *
                         (1.0f - std::exp(-13.0f * dt));
-                    for (int i = 0; i < iconCount && !slotDistances.empty() && circuitLength > 0.001f; ++i)
+                    for (int i = 0; i < iconCount; ++i)
                     {
                         const float slot = static_cast<float>(i) + g_previewPhase;
                         const float floorSlot = std::floor(slot);
@@ -1857,28 +1842,56 @@ namespace TrackEditor
                             value %= iconCount;
                             return value < 0 ? value + iconCount : value;
                         };
-                        float from = slotDistances[wrapSlot(static_cast<int>(floorSlot))];
-                        float to = slotDistances[wrapSlot(static_cast<int>(floorSlot) + 1)];
-                        if (to <= from) to += circuitLength;
                         const float smooth = fraction * fraction * (3.0f - 2.0f * fraction);
-                        float distance = from + (to - from) * smooth;
-                        while (distance >= circuitLength) distance -= circuitLength;
-                        ImVec2 position;
-                        if (transformingPiece &&
-                            slotPositions.size() == slotDistances.size())
+                        const ImVec2& fromPosition = slotPositions[
+                            static_cast<std::size_t>(wrapSlot(
+                                static_cast<int>(floorSlot)))];
+                        const ImVec2& toPosition = slotPositions[
+                            static_cast<std::size_t>(wrapSlot(
+                                static_cast<int>(floorSlot) + 1))];
+                        const int fromIndex = wrapSlot(static_cast<int>(floorSlot));
+                        const int toIndex = wrapSlot(static_cast<int>(floorSlot) + 1);
+                        const bool followsOverflowCircuit =
+                            !previewSlots[static_cast<std::size_t>(fromIndex)].main ||
+                            !previewSlots[static_cast<std::size_t>(toIndex)].main;
+                        ImVec2 position(
+                            fromPosition.x + (toPosition.x - fromPosition.x) * smooth,
+                            fromPosition.y + (toPosition.y - fromPosition.y) * smooth);
+                        // Só o excedente percorre o trilho externo durante o
+                        // giro. Os slots principais continuam usando sua
+                        // posição real, igual ao WheelSettings sem excedentes.
+                        if (followsOverflowCircuit && circuitLength > 0.001f)
                         {
-                            const ImVec2& fromPosition = slotPositions[
-                                static_cast<std::size_t>(wrapSlot(
-                                    static_cast<int>(floorSlot)))];
-                            const ImVec2& toPosition = slotPositions[
-                                static_cast<std::size_t>(wrapSlot(
-                                    static_cast<int>(floorSlot) + 1))];
-                            position = ImVec2(
-                                fromPosition.x + (toPosition.x - fromPosition.x) * smooth,
-                                fromPosition.y + (toPosition.y - fromPosition.y) * smooth);
+                            float from = previewSlots[static_cast<std::size_t>(fromIndex)].circuitT *
+                                circuitLength;
+                            float to = previewSlots[static_cast<std::size_t>(toIndex)].circuitT *
+                                circuitLength;
+                            if (to <= from) to += circuitLength;
+                            float distance = from + (to - from) * smooth;
+                            while (distance >= circuitLength) distance -= circuitLength;
+                            position = Track::SamplePolyline(circuit, distance).position;
                         }
                         else
-                            position = Track::SamplePolyline(circuit, distance).position;
+                        {
+                            // Entre dois slots principais o preview deve
+                            // seguir o contorno do radial, não cortar uma
+                            // corda reta através do círculo.
+                            constexpr float pi = 3.141592654f;
+                            constexpr float twoPi = 6.283185307f;
+                            const float fromAngle = std::atan2(
+                                fromPosition.y - center.y,
+                                fromPosition.x - center.x);
+                            const float toAngle = std::atan2(
+                                toPosition.y - center.y,
+                                toPosition.x - center.x);
+                            float arc = toAngle - fromAngle;
+                            while (arc > pi) arc -= twoPi;
+                            while (arc < -pi) arc += twoPi;
+                            const float angle = fromAngle + arc * smooth;
+                            position = RadialShape::PositionAtAngles(
+                                CurrentRadialShape(), center, radius,
+                                angle - layout.radialRotation, angle);
+                        }
                         draw->AddCircleFilled(position, 18.0f, IM_COL32(32, 34, 41, 225), 32);
                         draw->AddCircle(position, 18.0f, IM_COL32(225, 215, 195, 170), 32, 1.2f);
                         if (editorIcons[static_cast<std::size_t>(i)].texture)
