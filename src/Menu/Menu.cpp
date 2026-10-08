@@ -2656,6 +2656,15 @@ namespace Menu
 
         bool targetLeft = false;
 
+        // Um arco/besta/arma de duas mãos bloqueia as duas mãos; um escudo
+        // bloqueia apenas a mão solicitada. Guardamos esse bloqueador antes
+        // do fluxo normal para liberar o slot sem perder a identificação da
+        // arma que o jogador realmente escolheu.
+        RE::FormID blockerFormID = 0;
+        bool blockerIsTwoHanded = false;
+        bool blockerLeft = false;
+        int resumePhaseAfterBlocker = 2;
+
         int phase = 0;
         int attempts = 0;
 
@@ -9211,6 +9220,20 @@ namespace Menu
         return type == RE::WEAPON_TYPE::kBow || type == RE::WEAPON_TYPE::kCrossbow;
     }
 
+    // Armas que ocupam o conjunto inteiro de mãos. Não podem ser tratadas
+    // como a simples arma "da outra mão" durante uma troca one-handed.
+    static bool IsTwoHandedWeapon(RE::TESObjectWEAP* weapon)
+    {
+        if (!weapon)
+            return false;
+
+        const auto type = weapon->GetWeaponType();
+        return type == RE::WEAPON_TYPE::kTwoHandSword ||
+            type == RE::WEAPON_TYPE::kTwoHandAxe ||
+            type == RE::WEAPON_TYPE::kBow ||
+            type == RE::WEAPON_TYPE::kCrossbow;
+    }
+
     bool IsArmorEquipped(
         RE::Actor* actor,
         RE::TESObjectARMO* armor,
@@ -10724,6 +10747,93 @@ namespace Menu
             otherState == 1;
 
         // ============================================================
+        // PHASE -1
+        //
+        // LIBERA BLOQUEADOR DE MÃO
+        //
+        // Arcos/bestas/duas-mãos ocupam ambas as mãos e escudos ocupam a
+        // mão esquerda. A engine pode escolher a mão oposta se receber uma
+        // solicitação one-handed sem que esse bloqueador seja removido antes.
+        // ============================================================
+
+        if (pending.phase == -1)
+        {
+            auto* blocker = RE::TESForm::LookupByID<RE::TESBoundObject>(
+                pending.blockerFormID);
+
+            if (!blocker)
+            {
+                spdlog::warn("WEAPON BLOCKER | form missing={:08X}",
+                    pending.blockerFormID);
+                finish();
+                return;
+            }
+
+            const bool stillBlocking = pending.blockerIsTwoHanded
+                ? actor->GetEquippedObject(true) == blocker ||
+                    actor->GetEquippedObject(false) == blocker
+                : actor->GetEquippedObject(pending.blockerLeft) == blocker;
+
+            if (!stillBlocking)
+            {
+                pending.phase = pending.resumePhaseAfterBlocker;
+                pending.phaseTime = now;
+                pending.attempts = 0;
+                pending.waitingForSheathe = false;
+                spdlog::info("WEAPON BLOCKER RELEASED | form={:08X} | nextPhase={}",
+                    pending.blockerFormID, pending.phase);
+                return;
+            }
+
+            if (pending.attempts == 0)
+            {
+                // Preserva o comportamento seguro do equipador atual: espera
+                // a transição de sacar/guardar terminar antes de trocar algo
+                // que ocupa uma mão.
+                if (!WaitForWeaponSheathe(actor, pending))
+                    return;
+
+                auto* blockerExtra = pending.blockerIsTwoHanded
+                    ? nullptr
+                    : GetEquippedWeaponExtraList(actor, pending.blockerLeft);
+                const auto* blockerSlot = pending.blockerIsTwoHanded
+                    ? nullptr
+                    : targetSlot;
+
+                pending.attempts = 1;
+                pending.phaseTime = now;
+
+                const bool sent = manager->UnequipObject(
+                    actor,
+                    blocker,
+                    blockerExtra,
+                    1,
+                    blockerSlot,
+                    false,
+                    true,
+                    true,
+                    true,
+                    nullptr);
+
+                spdlog::info(
+                    "WEAPON BLOCKER UNEQUIP | form={:08X} | type={} | sent={}",
+                    pending.blockerFormID,
+                    pending.blockerIsTwoHanded ? "two-handed" : "shield",
+                    sent);
+                return;
+            }
+
+            if (phaseElapsed >= 2.0f)
+            {
+                spdlog::warn("WEAPON BLOCKER TIMEOUT | form={:08X}",
+                    pending.blockerFormID);
+                finish();
+            }
+
+            return;
+        }
+
+        // ============================================================
         // PHASE 0
         //
         // DESEQUIPA A INSTÂNCIA DA MÃO SOLICITADA
@@ -10971,14 +11081,22 @@ namespace Menu
             }
 
             // A instância ainda está na outra mão.
+            // Isso pode ocorrer logo após remover um arco/arma de duas mãos:
+            // o próprio Skyrim autoequipa a única arma disponível antes de
+            // chegarmos a esta fase. Não é uma falha; reaproveitamos a
+            // transferência normal para levá-la à mão originalmente pedida.
             if (onOther)
             {
-                spdlog::warn(
-                    "WEAPON EQUIP BLOCKED | instance still on opposite hand | uniqueID={}",
-                    pending.uniqueID
-                );
+                pending.phase = 1;
+                pending.phaseTime = now;
+                pending.attempts = 0;
+                pending.waitingForSheathe = false;
 
-                finish();
+                spdlog::info(
+                    "WEAPON AUTOEQUIP TRANSFER | from={} | to={} | uniqueID={}",
+                    pending.targetLeft ? "RIGHT" : "LEFT",
+                    pending.targetLeft ? "LEFT" : "RIGHT",
+                    pending.uniqueID);
                 return;
             }
 
@@ -11702,6 +11820,63 @@ namespace Menu
         pending.attempts = 0;
 
         // ============================================================
+        // BLOQUEADORES DO SLOT
+        //
+        // Mantém todo o resolvedor atual de armas/unique IDs, mas abre uma
+        // etapa anterior quando uma peça incompatível ocupa a mão solicitada.
+        // ============================================================
+
+        const auto assignTwoHandedBlocker = [&](RE::TESForm* equipped,
+                                                 bool equippedLeft) {
+            auto* equippedWeapon = equipped
+                ? equipped->As<RE::TESObjectWEAP>()
+                : nullptr;
+            if (!IsTwoHandedWeapon(equippedWeapon))
+                return false;
+
+            pending.blockerFormID = equippedWeapon->GetFormID();
+            pending.blockerIsTwoHanded = true;
+            pending.blockerLeft = equippedLeft;
+            return true;
+        };
+
+        const bool blockedByTwoHanded =
+            assignTwoHandedBlocker(actor->GetEquippedObject(true), true) ||
+            assignTwoHandedBlocker(actor->GetEquippedObject(false), false);
+
+        if (!blockedByTwoHanded)
+        {
+            auto* targetEquipped = actor->GetEquippedObject(leftSide);
+            auto* targetArmor = targetEquipped
+                ? targetEquipped->As<RE::TESObjectARMO>()
+                : nullptr;
+            if (IsShield(targetArmor))
+            {
+                pending.blockerFormID = targetArmor->GetFormID();
+                pending.blockerIsTwoHanded = false;
+                pending.blockerLeft = leftSide;
+            }
+        }
+
+        if (pending.blockerFormID != 0)
+        {
+            // Se a própria arma já estiver na outra mão, ela ainda precisa
+            // passar pela transferência normal após liberar o bloqueador.
+            pending.resumePhaseAfterBlocker = onOther ? 1 : 2;
+            pending.phase = -1;
+            pending.unequipOnly = false;
+            g_pendingNormalWeaponEquip = pending;
+
+            spdlog::info(
+                "WEAPON BLOCKER DETECTED | form={:08X} | type={} | target={} | resumePhase={}",
+                pending.blockerFormID,
+                pending.blockerIsTwoHanded ? "two-handed" : "shield",
+                leftSide ? "LEFT" : "RIGHT",
+                pending.resumePhaseAfterBlocker);
+            return;
+        }
+
+        // ============================================================
         // 6. MESMA INSTÂNCIA NA MÃO SOLICITADA
         //
         // Selecionar novamente = desequipar.
@@ -11754,13 +11929,24 @@ namespace Menu
         // Registra a arma original da outra mão.
         // ============================================================
 
-        GetEquippedWeaponIdentity(
-            actor,
-            !leftSide,
-            pending.previousWeaponID,
-            pending.previousUniqueID,
-            pending.previousHasUniqueID
-        );
+        auto* otherEquipped = actor->GetEquippedObject(!leftSide);
+        auto* otherWeapon = otherEquipped
+            ? otherEquipped->As<RE::TESObjectWEAP>()
+            : nullptr;
+
+        // Uma arma de duas mãos não é uma "arma da outra mão" a restaurar.
+        // Ela já teria sido tratada como bloqueador acima; esta defesa evita
+        // que alguma transição tardia a recoloque após uma troca one-handed.
+        if (!IsTwoHandedWeapon(otherWeapon))
+        {
+            GetEquippedWeaponIdentity(
+                actor,
+                !leftSide,
+                pending.previousWeaponID,
+                pending.previousUniqueID,
+                pending.previousHasUniqueID
+            );
+        }
 
         pending.previousWeaponWasEquipped =
             pending.previousWeaponID != 0;
