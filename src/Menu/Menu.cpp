@@ -15279,6 +15279,7 @@ namespace Menu
             Resolution::ToVirtual(ImVec2(0.0f, 0.0f)),
             Resolution::ToVirtual(Resolution::GetRealSize()),
             false);
+        
         draw->AddText(
             ImVec2(
                 badgePos.x - textSize.x * 0.5f,
@@ -15290,7 +15291,143 @@ namespace Menu
             ),
             text.c_str()
         );
+        
         draw->PopClipRect();
+    }
+
+    // ============================================================
+    // INDICADOR DE QUICK DRAW
+    //
+    // No WheelSettings, itens que têm um gesto salvo recebem um ponto no
+    // lado oposto ao contador de quantidade. Assim o marcador acompanha a
+    // leitura visual do slot sem disputar espaço com o número interno.
+    // ============================================================
+    static void DrawQuickDrawIndicator(
+        ImDrawList* draw,
+        const RadialItem& item,
+        const ImVec2& itemPos,
+        const ImVec2& radialCenter,
+        float itemRadius,
+        int quantity,
+        float alpha,
+        float hoverT,
+        bool isOverflow,
+        QuantityBadgeDirection directionMode = QuantityBadgeDirection::AutoToCenter)
+    {
+        if (!draw ||
+            !SettingsMenu::WheelSettingsMenu::IsOpen() ||
+            alpha <= 0.001f)
+            return;
+
+        const auto* stroke = FindQuickDrawStroke(item);
+        if (!stroke || stroke->empty())
+            return;
+
+        // Esta é a direção usada pelo contador, isto é, voltada para dentro
+        // do radial. O indicador fica exatamente na direção contrária.
+        float dx = 0.0f;
+        float dy = 0.0f;
+        switch (directionMode)
+        {
+        case QuantityBadgeDirection::Up:
+            dy = -1.0f;
+            break;
+        case QuantityBadgeDirection::Down:
+            dy = 1.0f;
+            break;
+        case QuantityBadgeDirection::AutoToCenter:
+        default:
+        {
+            dx = radialCenter.x - itemPos.x;
+            dy = radialCenter.y - itemPos.y;
+            const float distance = std::sqrt(dx * dx + dy * dy);
+            if (distance > 0.001f)
+            {
+                dx /= distance;
+                dy /= distance;
+            }
+            else
+            {
+                dy = 1.0f;
+            }
+            break;
+        }
+        }
+
+        // Mantém a mesma distância-base do contador de quantidade. Quando o
+        // contador não é exibido (quantidade 1), o ponto ainda conserva uma
+        // posição estável e previsível.
+        const float fontScale = std::clamp(Config::g_fontSizeScale, 1.0f, 2.5f);
+        
+        const float badgeRadius = (
+            quantity >= 10000 ? 18.0f :
+            quantity >= 1000 ? 15.5f :
+            quantity >= 100 ? 13.5f :
+            11.5f) * fontScale;
+        
+        // O ponto fica quinze pixels mais perto do ícone que o contador.
+        // No hover ele é repelido suavemente para fora, no mesmo sentido do
+        // contador quando este se afasta do item.
+        
+        hoverT = std::clamp(hoverT, 0.0f, 1.0f);
+        
+        const float smoothHover = hoverT * hoverT * (3.0f - 2.0f * hoverT);
+        
+        const float offset = std::max(
+            itemRadius + 2.0f,
+            itemRadius + badgeRadius + 3.0f - 15.0f) +
+            16.0f * smoothHover;
+
+        // Pequena flutuação própria: ela se soma ao deslocamento do item,
+        // por isso o marcador não parece preso à animação do slot.
+        const float time = static_cast<float>(ImGui::GetTime());
+        
+        const std::uint32_t seed =
+            (item.form ? item.form->GetFormID() : 0u) ^
+            (static_cast<std::uint32_t>(item.uniqueID) << 16);
+        
+        const float phase = static_cast<float>(seed % 628u) * 0.01f;
+        
+        const float floatScale = isOverflow ? 0.80f : 1.0f;
+        
+        const ImVec2 ownFloat(
+            std::sin(time * 1.25f + phase) * 1.35f * floatScale,
+            std::cos(time * 1.05f + phase * 1.37f) * 1.65f * floatScale);
+        
+        const ImVec2 markerPos(
+            itemPos.x - dx * offset + ownFloat.x,
+            itemPos.y - dy * offset + ownFloat.y);
+
+        // Pulso lento e individual: cada item parte de uma fase diferente,
+        // variando suavemente entre 20% e sua opacidade normal.
+        const float pulse = 0.20f + 0.80f *
+            (0.5f + 0.5f * std::sin(time * 0.72f + phase * 1.91f));
+
+        // Mesmo desenho do cursor do WheelSettings, 10% menor. Excedentes
+        // recebem mais 20% de redução e metade da opacidade dos principais.
+        const float pointRadius = 3.6f * floatScale;
+        
+        const float indicatorAlpha =
+            alpha * (isOverflow ? 0.50f : 0.80f) * pulse;
+        
+        draw->AddCircleFilled(
+            ImVec2(markerPos.x + 1.35f, markerPos.y + 1.35f),
+            4.5f * floatScale,
+            FadeColor(IM_COL32(0, 0, 0, 160), indicatorAlpha),
+            16);
+        
+        draw->AddCircleFilled(
+            markerPos,
+            pointRadius,
+            FadeColor(IM_COL32(255, 255, 255, 255), indicatorAlpha),
+            16);
+        
+        draw->AddCircle(
+            markerPos,
+            5.4f * floatScale,
+            FadeColor(IM_COL32(255, 255, 255, 100), indicatorAlpha),
+            24,
+            1.0f);
     }
 
     
@@ -16399,6 +16536,18 @@ namespace Menu
                     QuantityBadgeDirection::Up
                 );
 
+            DrawQuickDrawIndicator(
+                draw,
+                item,
+                itemPos,
+                center,
+                radius,
+                itemInfo.instanceQuantity,
+                alpha * alphaFactor * gameplayItemOpacity,
+                hoverT,
+                false,
+                QuantityBadgeDirection::Up);
+
         }
         topItemLayers.Merge(draw);
     }
@@ -16871,6 +17020,18 @@ namespace Menu
                     alpha * alphaFactor * gameplayItemOpacity,
                     QuantityBadgeDirection::Down
                 );
+
+            DrawQuickDrawIndicator(
+                draw,
+                item,
+                itemPos,
+                center,
+                radius,
+                itemInfo.instanceQuantity,
+                alpha * alphaFactor * gameplayItemOpacity,
+                hoverT,
+                false,
+                QuantityBadgeDirection::Down);
 
 
         }
@@ -17730,6 +17891,18 @@ namespace Menu
                     QuantityBadgeDirection::AutoToCenter
                 );
 
+            DrawQuickDrawIndicator(
+                draw,
+                item,
+                itemPos,
+                center,
+                currentRadius,
+                itemInfo.instanceQuantity,
+                itemDrawAlpha * (customGameplayVisual ? anim.radialSizeT : 1.0f),
+                hoverT,
+                false,
+                QuantityBadgeDirection::AutoToCenter);
+
         }
 
         // ============================================================
@@ -18379,6 +18552,20 @@ namespace Menu
                         itemDrawAlpha * transitionFactor,
                         QuantityBadgeDirection::AutoToCenter);
                 }
+
+                const ItemInfo::Data itemInfo = ItemInfo::Get(
+                    item.form, item.uniqueID, item.hasUniqueID);
+                DrawQuickDrawIndicator(
+                    draw,
+                    item,
+                    overflowPos,
+                    center,
+                    finalOverflowRadius,
+                    itemInfo.instanceQuantity,
+                    itemDrawAlpha,
+                    hoverT,
+                    true,
+                    QuantityBadgeDirection::AutoToCenter);
             }
         }
 
@@ -19458,6 +19645,35 @@ namespace Menu
 
         const ImVec2 mouse = GetSkyrimMousePos();
 
+        // O ponto central continua respondendo imediatamente ao cursor. O
+        // anel tem uma reação própria e leve ao movimento, para sugerir uma
+        // peça flutuando ao redor dele sem prejudicar a precisão do clique.
+        static ImVec2 lastMouse = mouse;
+        static double lastAnimationTime = -1.0;
+        static float movementT = 0.0f;
+
+        const double now = ImGui::GetTime();
+        if (now != lastAnimationTime)
+        {
+            const float mouseDx = mouse.x - lastMouse.x;
+            const float mouseDy = mouse.y - lastMouse.y;
+            const float distance = std::sqrt(mouseDx * mouseDx + mouseDy * mouseDy);
+            const float target = std::clamp(distance / 14.0f, 0.0f, 1.0f);
+            const float dt = std::clamp(ImGui::GetIO().DeltaTime, 0.0f, 0.05f);
+            const float response = 1.0f - std::exp(-10.0f * dt);
+            movementT += (target - movementT) * response;
+            lastMouse = mouse;
+            lastAnimationTime = now;
+        }
+
+        const float time = static_cast<float>(now);
+        const float ringScale =
+            0.85f + 0.30f * movementT +
+            std::sin(time * 1.45f) * 0.018f;
+        const ImVec2 ringCenter(
+            mouse.x + std::sin(time * 1.15f) * 0.55f,
+            mouse.y + std::cos(time * 1.30f) * 0.55f);
+
         ImDrawList* draw =
             ImGui::GetForegroundDrawList();
 
@@ -19472,18 +19688,19 @@ namespace Menu
         // Cursor branco
         draw->AddCircleFilled(
             mouse,
-            4.0f,
-            IM_COL32(255, 255, 255, 255),
+            3.0f,
+            IM_COL32(255, 255, 255, 210),
             16
         );
 
-        // Contorno
+        // Anel externo: pequeno, sem preenchimento e com 50% de opacidade.
+        // A escala varia 15% entre repouso e movimento.
         draw->AddCircle(
-            mouse,
-            6.0f,
-            IM_COL32(255, 255, 255, 100),
-            24,
-            1.0f
+            ringCenter,
+            14.5f * ringScale,
+            IM_COL32(255, 255, 255, 84),
+            32,
+            1.35f
         );
     }
 
