@@ -5702,14 +5702,20 @@ namespace Menu
             return 0;
 
         const bool leftSide = side == RadialSide::Left;
+        
         const WheelLayout layout = GetWheelLayout();
+        
         const ImVec2 center = leftSide ? layout.leftRadial : layout.rightRadial;
+        
         const int mainCount = std::min(total, GetSideVisibleLimit());
+        
         const auto shape = static_cast<RadialShape::Style>(std::clamp(
             Config::g_radialShape, 0, RadialShape::Count() - 1));
+        
         const auto slots = Track::CircuitSlots(
             center, GetSideRadialRadius(), leftSide, mainCount,
             total - mainCount, shape);
+        
         if (slots.size() != static_cast<std::size_t>(total))
             return -1;
 
@@ -5719,10 +5725,14 @@ namespace Menu
             int itemIndex{};
             ImVec2 position{};
         };
+        
         std::vector<CircuitNode> nodes;
+        
         nodes.reserve(slots.size());
+        
         const bool visualHitboxesReady = g_settingsDrag.active &&
             g_settingsHitboxGeneration > g_settingsDrag.hitboxGeneration;
+        
         for (const auto& slot : slots)
         {
             const int itemIndex = WrapSideIndex(
@@ -5740,6 +5750,7 @@ namespace Menu
                         return candidate.side == side &&
                             candidate.index == itemIndex;
                     });
+        
                 if (hitbox != g_settingsItemHitboxes.end())
                     visualPosition = hitbox->position;
             }
@@ -5750,20 +5761,26 @@ namespace Menu
                 visualPosition
             });
         }
+        
         std::ranges::sort(nodes, {}, &CircuitNode::ordinal);
 
         if (nodes.size() == 1)
             return 0;
 
         float closestDistanceSq = FLT_MAX;
+        
         std::size_t nextNode = 0;
+        
         for (std::size_t i = 0; i < nodes.size(); ++i)
         {
             const ImVec2 a = nodes[i].position;
             const ImVec2 b = nodes[(i + 1) % nodes.size()].position;
+            
             const float dx = b.x - a.x;
             const float dy = b.y - a.y;
+            
             const float lengthSq = dx * dx + dy * dy;
+            
             if (lengthSq <= 0.001f)
                 continue;
 
@@ -5771,11 +5788,15 @@ namespace Menu
                 ((mouse.x - a.x) * dx + (mouse.y - a.y) * dy) / lengthSq,
                 0.0f,
                 1.0f);
+            
             const float projectedX = a.x + dx * t;
             const float projectedY = a.y + dy * t;
+            
             const float distanceX = mouse.x - projectedX;
             const float distanceY = mouse.y - projectedY;
+            
             const float distanceSq = distanceX * distanceX + distanceY * distanceY;
+            
             if (distanceSq < closestDistanceSq)
             {
                 closestDistanceSq = distanceSq;
@@ -5916,12 +5937,17 @@ namespace Menu
         auto seedAnimationAtDrop = [&](const ImVec2& position,
                                        RadialSide dropSide) {
             const RadialAnimKey key{ drag.form, drag.uniqueID, drag.hasUniqueID };
+            
             auto [it, inserted] = g_itemAnimCache.try_emplace(key);
             auto& anim = it->second;
+            
             anim.currentPos = position;
             anim.previousPos = position;
+            
             anim.velocity = ImVec2(0.0f, 0.0f);
+            
             anim.posInitialized = true;
+            
             anim.sidePolarInitialized = false;
             anim.sideWrapActive = false;
             anim.sideWrapTargetInitialized = false;
@@ -5960,18 +5986,26 @@ namespace Menu
                 (dropSide == RadialSide::Left || dropSide == RadialSide::Right))
             {
                 const WheelLayout layout = GetWheelLayout();
+            
                 const ImVec2 center = dropSide == RadialSide::Left
                     ? layout.leftRadial : layout.rightRadial;
+            
                 const float dx = position.x - center.x;
                 const float dy = position.y - center.y;
+            
                 auto& state = anim.gameplayRadialAnimation;
+            
                 state = {};
+            
                 state.position = position;
                 state.lastTarget = position;
+            
                 state.angle = std::atan2(dy, dx);
                 state.radius = std::sqrt(dx * dx + dy * dy);
+            
                 state.initialized = true;
             }
+            
             (void)inserted;
         };
 
@@ -5992,14 +6026,21 @@ namespace Menu
         {
             const int restoreIndex = std::clamp(
                 drag.sourceIndex, 0, static_cast<int>(sourceList->size()));
+            
             sourceList->insert(sourceList->begin() + restoreIndex, drag.item);
+            
             for (int i = 0; i < static_cast<int>(sourceList->size()); ++i)
                 (*sourceList)[i].slot = i;
+            
             seedAnimationAtDrop(drag.position, drag.sourceSide);
+            
             settleList(*sourceList);
+            
             if (sourceList == &g_sideItems)
                 g_settingsTopologySettleRemaining = 0.30f;
+            
             g_settingsDrag = {};
+            
             return;
         }
 
@@ -6032,11 +6073,15 @@ namespace Menu
             targetList->begin() + insertIndex,
             std::move(movedItem)
         );
+        
         seedAnimationAtDrop(drag.position, targetSide);
+        
         settleList(*sourceList);
+        
         if (sourceList != targetList)
             settleList(*targetList);
-        if (sourceList == &g_sideItems || targetList == &g_sideItems)
+        
+            if (sourceList == &g_sideItems || targetList == &g_sideItems)
         {
             g_sideScrollOffset = g_sideItems.empty()
                 ? 0
