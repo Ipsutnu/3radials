@@ -18561,11 +18561,15 @@ namespace Menu
                     settingsOpen && g_settingsDrag.active;
                 const bool dragMorphContext =
                     g_radialMode == RadialMode::Inventory || settingsOpen;
+                // O morph de drag serve apenas para apresentar todos os
+                // excedentes como itens enquanto o usuário segura um item.
+                // Ele não pode substituir a transição física normal do
+                // circuito (principal <-> excedente) no WheelSettings.
+                const bool activeDragMorph =
+                    IsInventoryDragVisualActive() || settingsDragVisualActive;
                 if (dragMorphContext)
                 {
-                    const float morphTarget =
-                        (IsInventoryDragVisualActive() ||
-                            settingsDragVisualActive) ? 1.0f : 0.0f;
+                    const float morphTarget = activeDragMorph ? 1.0f : 0.0f;
                     const float morphSpeed = morphTarget > 0.5f
                         ? 11.0f
                         : 2.8f + static_cast<float>(i % 8) * 0.55f;
@@ -18579,11 +18583,11 @@ namespace Menu
                     anim.inventoryOverflowMorph = 0.0f;
                 }
                 const float visualRadialSizeT =
-                    dragMorphContext
+                    activeDragMorph
                     ? std::clamp(anim.inventoryOverflowMorph, 0.0f, 1.0f)
                     : std::clamp(anim.radialSizeT, 0.0f, 1.0f);
                 constexpr float dragOverflowMainScale = 0.80f;
-                const float morphItemRadius = dragMorphContext
+                const float morphItemRadius = activeDragMorph
                     ? itemRadius * dragOverflowMainScale
                     : itemRadius;
                 const float animatedRadius =
@@ -18599,7 +18603,7 @@ namespace Menu
                 // até o mesmo tamanho visual de um item principal.
                 const float finalOverflowRadius =
                     animatedRadius +
-                    ((dragMorphContext ? morphItemRadius : itemRadius) - animatedRadius) *
+                    ((activeDragMorph ? morphItemRadius : itemRadius) - animatedRadius) *
                     anim.overflowHoverT;
                 
                 // ============================================================
@@ -18705,12 +18709,17 @@ namespace Menu
                 // geral acompanha exatamente a do item principal. No Inventory
                 // o item principal usa o alpha integral; no WheelSettings ele
                 // usa a opacidade configurada do radial.
-                if (dragMorphContext)
+                if (transitionFactor > 0.001f)
                 {
                     const float overflowOpacity = settingsOpen
                         ? Config::g_overflowOpacity * 0.01f : 1.0f;
-                    const float mainOpacity = settingsOpen
-                        ? Config::g_itemOpacity * 0.01f : 0.8f;
+                    // Usa exatamente a mesma opacidade externa aplicada no
+                    // renderizador do item principal. Assim a passagem de
+                    // um renderizador para o outro não cria um pico de alpha.
+                    const float mainOpacity =
+                        g_radialMode == RadialMode::Gameplay
+                        ? Config::g_itemOpacity * 0.01f
+                        : 0.8f;
                     itemDrawAlpha = alpha * wrapAlpha *
                         (overflowOpacity +
                             (mainOpacity - overflowOpacity) * transitionFactor);
@@ -18720,20 +18729,20 @@ namespace Menu
                 // COR DO FUNDO
                 // ============================================================
 
-                // Fundo original do item.
-                const ImVec4 itemColor(
-                    static_cast<float>((Config::g_itemBackgroundColor >> 16) & 0xFF) / 255.0f,
-                    static_cast<float>((Config::g_itemBackgroundColor >> 8) & 0xFF) / 255.0f,
-                    static_cast<float>(Config::g_itemBackgroundColor & 0xFF) / 255.0f,
-                    std::clamp(Config::g_itemBackgroundOpacity * 0.01f, 0.0f, 1.0f)
-                );
-
                 // Cor original da bolinha excedente.
                 const ImVec4 overflowColor(
                     static_cast<float>((Config::g_overflowBackgroundColor >> 16) & 0xFF) / 255.0f,
                     static_cast<float>((Config::g_overflowBackgroundColor >> 8) & 0xFF) / 255.0f,
                     static_cast<float>(Config::g_overflowBackgroundColor & 0xFF) / 255.0f,
                     static_cast<float>(overflowAlpha) / 255.0f
+                );
+
+                // Fundo original do item.
+                const ImVec4 itemColor(
+                    static_cast<float>((Config::g_itemBackgroundColor >> 16) & 0xFF) / 255.0f,
+                    static_cast<float>((Config::g_itemBackgroundColor >> 8) & 0xFF) / 255.0f,
+                    static_cast<float>(Config::g_itemBackgroundColor & 0xFF) / 255.0f,
+                    std::clamp(Config::g_itemBackgroundOpacity * 0.01f, 0.0f, 1.0f)
                 );
 
                 // Transição suave entre os fundos.
@@ -18759,8 +18768,7 @@ namespace Menu
                 // A camada final é exatamente a mesma usada pelo item
                 // principal. Ela é apenas visual e não toca posição, índice,
                 // rota ou qualquer estado do circuito.
-                if (dragMorphContext &&
-                    transitionFactor > 0.001f)
+                if (transitionFactor > 0.001f)
                 {
                     DrawEquippedItemBackground(
                         draw, item.form, item.uniqueID, item.hasUniqueID,
@@ -18801,7 +18809,7 @@ namespace Menu
                     // transformação da bolinha excedente até a escala visual
                     // usada pelo item principal.
                     const float fullItemIconRadius =
-                        (dragMorphContext ? morphItemRadius : itemRadius) * 0.53f;
+                        (activeDragMorph ? morphItemRadius : itemRadius) * 0.53f;
                     const float iconRadius = std::min(fullItemIconRadius,
                         baseIconRadius +
                             (fullItemIconRadius - baseIconRadius) *
@@ -18840,9 +18848,7 @@ namespace Menu
                         (0.80f - baseIconAlpha) * hoverT;
 
                     const float iconOpacityScale =
-                        dragMorphContext
-                        ? 127.0f + 128.0f * transitionFactor
-                        : 127.0f;
+                        127.0f + 128.0f * transitionFactor;
                     const int iconOpacity = static_cast<int>(
                         iconOpacityScale * std::clamp(iconAlpha, 0.0f, 1.0f));
 
@@ -18873,7 +18879,10 @@ namespace Menu
 
                         FadeColor(
                             MakeGameplayIconColor(item, iconOpacity,
-                                iconBrightness / 255.0f, false),
+                                // A transição também deve respeitar o slider
+                                // Base Icon Opacity. Antes ela o ignorava e
+                                // só o item já acomodado voltava a 50%.
+                                iconBrightness / 255.0f, true),
                             itemDrawAlpha * iconFade
                         )
                     );
@@ -18900,8 +18909,7 @@ namespace Menu
                     1.0f
                 );
 
-                if (dragMorphContext &&
-                    transitionFactor > 0.001f)
+                if (transitionFactor > 0.001f)
                 {
                     draw->AddCircle(
                         overflowPos,
