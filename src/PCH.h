@@ -101,6 +101,7 @@ namespace Menu {
     void ScrollTopBottomRadial(int direction);
     void UpdatePendingWeaponSwitch();
     void UpdatePendingNormalWeaponEquip();
+    void UpdatePendingTwoHandedWeaponEquip();
     void UpdatePendingWeaponAction();
     void HandleSettingsScroll();
 

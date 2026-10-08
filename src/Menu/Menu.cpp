@@ -2690,6 +2690,36 @@ namespace Menu
 
     static PendingNormalWeaponEquip g_pendingNormalWeaponEquip;
 
+    // Fluxo separado para arco/besta. O Skyrim costuma lembrar a última
+    // arma de uma mão ao equipar uma arma de duas mãos e restaurá-la quando
+    // o arco sai. Limpamos as mãos antes de enviar o EquipObject do arco.
+    enum class TwoHandedEquipStage
+    {
+        None,
+        WaitingForSheathe,
+        WaitingForHandsClear,
+        WaitingForEquip,
+        WaitingForBowUnequip,
+        WaitingForFinalState
+    };
+
+    struct PendingTwoHandedWeaponEquip
+    {
+        TwoHandedEquipStage stage = TwoHandedEquipStage::None;
+        RE::ActorHandle actor;
+        RE::FormID weaponID = 0;
+        bool wasWeaponDrawn = false;
+        bool unequipOnly = false;
+        bool sheatheRequested = false;
+        bool clearRequested = false;
+        bool equipRequested = false;
+        bool finalStateRequested = false;
+        std::chrono::steady_clock::time_point startTime;
+        std::chrono::steady_clock::time_point stageTime;
+    };
+
+    static PendingTwoHandedWeaponEquip g_pendingTwoHandedWeaponEquip;
+
         
     class RadialUniqueIDListener :
         public RE::BSTEventSink<RE::TESUniqueIDChangeEvent>
@@ -11967,6 +11997,314 @@ namespace Menu
     }
     
     
+    static bool IsPhysicalHandItem(RE::TESForm* form)
+    {
+        if (!form)
+            return false;
+        if (form->As<RE::TESObjectWEAP>())
+            return true;
+        return IsShield(form->As<RE::TESObjectARMO>());
+    }
+
+    static RE::ExtraDataList* GetEquippedShieldExtraList(
+        RE::Actor* actor,
+        RE::TESObjectARMO* shield)
+    {
+        if (!actor || !shield)
+            return nullptr;
+
+        const auto inventory = actor->GetInventory();
+        const auto it = inventory.find(shield);
+        if (it == inventory.end() || !it->second.second)
+            return nullptr;
+
+        auto* entry = it->second.second.get();
+        if (!entry || !entry->extraLists)
+            return nullptr;
+
+        for (auto* extra : *entry->extraLists)
+        {
+            if (extra && extra->HasType<RE::ExtraWornLeft>())
+                return extra;
+        }
+        return nullptr;
+    }
+
+    static void RequestClearPhysicalHand(
+        RE::Actor* actor,
+        RE::ActorEquipManager* manager,
+        bool leftHand)
+    {
+        if (!actor || !manager)
+            return;
+
+        auto* form = actor->GetEquippedObject(leftHand);
+        if (!IsPhysicalHandItem(form))
+            return;
+
+        constexpr RE::FormID LEFT_SLOT = 0x13F43;
+        constexpr RE::FormID RIGHT_SLOT = 0x13F42;
+        const auto* slot = RE::TESForm::LookupByID<RE::BGSEquipSlot>(
+            leftHand ? LEFT_SLOT : RIGHT_SLOT);
+        if (!slot)
+            return;
+
+        if (auto* weapon = form->As<RE::TESObjectWEAP>())
+        {
+            // Sem slot: para armas de uma mão, informar LEFT/RIGHT faz o
+            // Skyrim tentar preservar a arma transferindo-a para a outra mão.
+            // Aqui queremos removê-la por completo antes do arco/besta.
+            manager->UnequipObject(
+                actor, weapon, GetEquippedWeaponExtraList(actor, leftHand), 1,
+                nullptr, false, false, true, true, nullptr);
+            return;
+        }
+
+        if (auto* shield = form->As<RE::TESObjectARMO>(); IsShield(shield))
+        {
+            manager->UnequipObject(
+                actor, shield, GetEquippedShieldExtraList(actor, shield), 1,
+                slot, false, false, true, true, nullptr);
+        }
+    }
+
+    static bool ArePhysicalHandsClear(RE::Actor* actor)
+    {
+        return actor &&
+            !IsPhysicalHandItem(actor->GetEquippedObject(true)) &&
+            !IsPhysicalHandItem(actor->GetEquippedObject(false));
+    }
+
+    void UpdatePendingTwoHandedWeaponEquip()
+    {
+        auto& pending = g_pendingTwoHandedWeaponEquip;
+        if (pending.stage == TwoHandedEquipStage::None)
+            return;
+
+        auto actorPtr = pending.actor.get();
+        auto* actor = actorPtr ? actorPtr.get() : nullptr;
+        auto* manager = RE::ActorEquipManager::GetSingleton();
+        auto* weapon = RE::TESForm::LookupByID<RE::TESObjectWEAP>(pending.weaponID);
+        if (!actor || !manager || !weapon)
+        {
+            pending = {};
+            return;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        const float elapsed = std::chrono::duration<float>(now - pending.startTime).count();
+        const float stageElapsed = std::chrono::duration<float>(now - pending.stageTime).count();
+        if (elapsed >= 8.0f)
+        {
+            spdlog::warn("TWO-HANDED EQUIP TIMEOUT | form={:08X}", pending.weaponID);
+            pending = {};
+            return;
+        }
+
+        if (pending.stage == TwoHandedEquipStage::WaitingForSheathe)
+        {
+            if (actor->IsWeaponDrawn())
+            {
+                if (!pending.sheatheRequested)
+                {
+                    pending.sheatheRequested = true;
+                    actor->DrawWeaponMagicHands(false);
+                    spdlog::info("TWO-HANDED SHEATHE REQUEST | form={:08X}", pending.weaponID);
+                }
+                return;
+            }
+
+            // Ao equipar arco/besta, o próprio EquipObject substitui a arma
+            // atual. Tentar limpar primeiro uma espada na mão esquerda faz o
+            // Skyrim migrá-la visualmente para a direita.
+            pending.stage = pending.unequipOnly
+                ? TwoHandedEquipStage::WaitingForBowUnequip
+                : TwoHandedEquipStage::WaitingForEquip;
+            pending.stageTime = now;
+            return;
+        }
+
+        if (pending.stage == TwoHandedEquipStage::WaitingForBowUnequip)
+        {
+            if (!pending.equipRequested)
+            {
+                pending.equipRequested = true;
+                pending.stageTime = now;
+                manager->UnequipObject(actor, weapon, nullptr, 1, nullptr,
+                    false, false, true, true, nullptr);
+                spdlog::info("TWO-HANDED UNEQUIP REQUEST | form={:08X}", pending.weaponID);
+                return;
+            }
+
+            if (actor->GetEquippedObject(false) == weapon ||
+                actor->GetEquippedObject(true) == weapon)
+                return;
+
+            // O Skyrim pode restaurar a arma anterior um frame depois de
+            // remover uma arma de duas mãos. Como o arco já está guardado,
+            // limpamos esse retorno sem o flash de uma arma sacada.
+            pending.stage = TwoHandedEquipStage::WaitingForHandsClear;
+            pending.clearRequested = false;
+            pending.stageTime = now;
+            return;
+        }
+
+        if (pending.stage == TwoHandedEquipStage::WaitingForHandsClear)
+        {
+            const bool handsClear = ArePhysicalHandsClear(actor);
+
+            // Durante o desligamento do arco, o Skyrim pode tentar restaurar
+            // o último equipamento por alguns frames. Mantemos tudo guardado
+            // e removemos somente o que ele realmente recolocar.
+            if (!handsClear)
+            {
+                if (actor->IsWeaponDrawn())
+                    actor->DrawWeaponMagicHands(false);
+
+                // O Skyrim pode mover uma arma da mão esquerda para a direita
+                // depois do primeiro UnequipObject. Revalida em intervalos
+                // curtos até as duas mãos físicas estarem realmente vazias.
+                if (!pending.clearRequested || stageElapsed >= 0.12f)
+                {
+                    auto* left = actor->GetEquippedObject(true);
+                    auto* right = actor->GetEquippedObject(false);
+                    // Uma arma de duas mãos pode ser reportada nas duas mãos;
+                    // nesse caso uma única solicitação sem slot é suficiente.
+                    if (left && left == right && left->As<RE::TESObjectWEAP>())
+                    {
+                        manager->UnequipObject(
+                            actor, left->As<RE::TESObjectWEAP>(), nullptr, 1,
+                            nullptr, false, false, true, true, nullptr);
+                    }
+                    else
+                    {
+                        RequestClearPhysicalHand(actor, manager, true);
+                        RequestClearPhysicalHand(actor, manager, false);
+                    }
+                    pending.clearRequested = true;
+                    pending.stageTime = now;
+                    spdlog::info("TWO-HANDED CLEAR RESTORED HANDS | form={:08X} | left={:08X} | right={:08X}",
+                        pending.weaponID,
+                        left ? left->GetFormID() : 0,
+                        right ? right->GetFormID() : 0);
+                }
+                return;
+            }
+
+            if (pending.unequipOnly)
+            {
+                // Mantém uma janela curta livre de itens físicos. Isso pega
+                // a restauração tardia sem mostrar uma espada sacada.
+                if (stageElapsed < 0.35f)
+                    return;
+
+                if (pending.wasWeaponDrawn)
+                {
+                    pending.stage = TwoHandedEquipStage::WaitingForFinalState;
+                    pending.finalStateRequested = false;
+                    pending.stageTime = now;
+                    return;
+                }
+
+                pending = {};
+                return;
+            }
+
+            pending.stage = TwoHandedEquipStage::WaitingForEquip;
+            pending.stageTime = now;
+            return;
+        }
+
+        if (pending.stage == TwoHandedEquipStage::WaitingForEquip)
+        {
+            if (!pending.equipRequested)
+            {
+                pending.equipRequested = true;
+                pending.stageTime = now;
+                manager->EquipObject(actor, weapon, nullptr, 1, nullptr,
+                    false, false, true, false);
+                spdlog::info("TWO-HANDED EQUIP REQUEST | form={:08X}", pending.weaponID);
+                return;
+            }
+
+            if (actor->GetEquippedObject(false) != weapon)
+                return;
+
+            pending.stage = TwoHandedEquipStage::WaitingForFinalState;
+            pending.stageTime = now;
+            return;
+        }
+
+        // Preserva o estado de sacar/guardar que existia antes do fluxo.
+        if (pending.stage == TwoHandedEquipStage::WaitingForFinalState)
+        {
+            const bool isDrawn = actor->IsWeaponDrawn();
+            if (pending.wasWeaponDrawn == isDrawn)
+            {
+                pending = {};
+                return;
+            }
+
+            if (!pending.finalStateRequested && stageElapsed >= 0.20f)
+            {
+                pending.finalStateRequested = true;
+                pending.stageTime = now;
+                actor->DrawWeaponMagicHands(pending.wasWeaponDrawn);
+                return;
+            }
+        }
+    }
+
+    static void RequestTwoHandedWeaponEquip(
+        RE::Actor* actor,
+        RE::TESObjectWEAP* weapon)
+    {
+        if (!actor || !weapon || g_pendingTwoHandedWeaponEquip.stage != TwoHandedEquipStage::None)
+            return;
+
+        // Uma seleção de arco substitui uma troca one-handed ainda em curso.
+        // Isso impede que uma solicitação antiga restaure a espada depois.
+        g_pendingNormalWeaponEquip = {};
+
+        auto& pending = g_pendingTwoHandedWeaponEquip;
+        pending = {};
+        pending.stage = TwoHandedEquipStage::WaitingForSheathe;
+        pending.actor = actor->GetHandle();
+        pending.weaponID = weapon->GetFormID();
+        pending.wasWeaponDrawn = actor->IsWeaponDrawn();
+        pending.startTime = std::chrono::steady_clock::now();
+        pending.stageTime = pending.startTime;
+
+        spdlog::info("TWO-HANDED EQUIP START | form={:08X} | drawn={}",
+            pending.weaponID, pending.wasWeaponDrawn);
+    }
+
+    static void RequestTwoHandedWeaponUnequip(
+        RE::Actor* actor,
+        RE::TESObjectWEAP* weapon)
+    {
+        if (!actor || !weapon ||
+            g_pendingTwoHandedWeaponEquip.stage != TwoHandedEquipStage::None)
+            return;
+
+        // Um desequipamento do arco também cancela uma troca one-handed
+        // ainda pendente, para que ela não reapareça após o arco sair.
+        g_pendingNormalWeaponEquip = {};
+
+        auto& pending = g_pendingTwoHandedWeaponEquip;
+        pending = {};
+        pending.stage = TwoHandedEquipStage::WaitingForSheathe;
+        pending.actor = actor->GetHandle();
+        pending.weaponID = weapon->GetFormID();
+        pending.unequipOnly = true;
+        pending.wasWeaponDrawn = actor->IsWeaponDrawn();
+        pending.startTime = std::chrono::steady_clock::now();
+        pending.stageTime = pending.startTime;
+
+        spdlog::info("TWO-HANDED UNEQUIP START | form={:08X} | drawn={}",
+            pending.weaponID, pending.wasWeaponDrawn);
+    }
+
     void UpdatePendingWeaponAction()
     {
         auto& pending = g_pendingWeaponAction;
@@ -12336,15 +12674,19 @@ namespace Menu
         RE::TESForm* form = selected->form;
 
         const bool quickDrawSelection = g_quickDrawSelectionOverride != nullptr;
+        
         const RadialSide actionSide = quickDrawSelection
             ? g_quickDrawSelectionSide
             : g_radialSide;
+        
         // O gesto do Quick Draw escolhe explicitamente a mão pelo botão que
         // iniciou o traço, independentemente do radial que continha o item.
         const bool leftSide = quickDrawSelection
             ? g_quickDrawGameplayEquipLeft
             : actionSide == RadialSide::Left;
+        
         const bool rightSide = actionSide == RadialSide::Right;
+        
         (void)rightSide;
 
         // ============================================================
@@ -12604,13 +12946,11 @@ namespace Menu
 
                 if (equipped)
                 {
-                    equipManager->UnequipObject(
-                        actor, weapon, nullptr, 1, nullptr, true, false, true, true);
+                    RequestTwoHandedWeaponUnequip(actor, weapon);
                 }
                 else
                 {
-                    equipManager->EquipObject(
-                        actor, weapon, nullptr, 1, nullptr, true, false, true, true);
+                    RequestTwoHandedWeaponEquip(actor, weapon);
                 }
 
                 return;

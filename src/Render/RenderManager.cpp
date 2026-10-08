@@ -485,6 +485,7 @@ namespace RenderManager
             //Menu::UpdatePendingWeaponSwitch();
             //Menu::UpdatePendingWeaponAction();
             Menu::UpdatePendingNormalWeaponEquip();
+            Menu::UpdatePendingTwoHandedWeaponEquip();
 
             if (!g_initialized)
             {
