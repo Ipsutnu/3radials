@@ -15314,8 +15314,18 @@ namespace Menu
         bool isOverflow,
         QuantityBadgeDirection directionMode = QuantityBadgeDirection::AutoToCenter)
     {
+        // Cada abertura do WheelSettings inicia uma nova sessão de órbita.
+        // O valor é compartilhado pelos itens apenas como semente; velocidade,
+        // fase e sentido continuam únicos para cada um.
+        static bool wasSettingsOpen = false;
+        static std::uint32_t orbitSession = 0;
+        const bool settingsOpen = SettingsMenu::WheelSettingsMenu::IsOpen();
+        if (settingsOpen && !wasSettingsOpen)
+            ++orbitSession;
+        wasSettingsOpen = settingsOpen;
+
         if (!draw ||
-            !SettingsMenu::WheelSettingsMenu::IsOpen() ||
+            !settingsOpen ||
             alpha <= 0.001f)
             return;
 
@@ -15387,6 +15397,23 @@ namespace Menu
             (static_cast<std::uint32_t>(item.uniqueID) << 16);
         
         const float phase = static_cast<float>(seed % 628u) * 0.01f;
+
+        // Mistura a sessão atual à identidade do item. Assim o sentido e a
+        // velocidade mudam a cada abertura, mas permanecem estáveis enquanto
+        // o menu está aberto.
+        std::uint32_t orbitSeed = seed ^
+            (orbitSession * 0x9E3779B9u + 0x7F4A7C15u);
+        orbitSeed ^= orbitSeed >> 16;
+        orbitSeed *= 0x7FEB352Du;
+        orbitSeed ^= orbitSeed >> 15;
+        const float orbitVariation =
+            static_cast<float>(orbitSeed & 0xFFFFu) / 65535.0f;
+        const float orbitSpeed = 0.36f * (0.60f + 0.80f * orbitVariation);
+        const float orbitDirection = (orbitSeed & 0x10000u) ? 1.0f : -1.0f;
+        const float orbitAngle = orbitDirection *
+            (time * orbitSpeed +
+                static_cast<float>((orbitSeed >> 17) % 628u) * 0.01f);
+
         
         const float floatScale = isOverflow ? 0.80f : 1.0f;
         
@@ -15394,9 +15421,15 @@ namespace Menu
             std::sin(time * 1.25f + phase) * 1.35f * floatScale,
             std::cos(time * 1.05f + phase * 1.37f) * 1.65f * floatScale);
         
+        // Gira o vetor externo, preservando a distância que o marcador já
+        // tinha do ícone. A pequena flutuação própria vem por cima da órbita.
+        const float baseX = -dx * offset;
+        const float baseY = -dy * offset;
+        const float orbitCos = std::cos(orbitAngle);
+        const float orbitSin = std::sin(orbitAngle);
         const ImVec2 markerPos(
-            itemPos.x - dx * offset + ownFloat.x,
-            itemPos.y - dy * offset + ownFloat.y);
+            itemPos.x + baseX * orbitCos - baseY * orbitSin + ownFloat.x,
+            itemPos.y + baseX * orbitSin + baseY * orbitCos + ownFloat.y);
 
         // Pulso lento e individual: cada item parte de uma fase diferente,
         // variando suavemente entre 20% e sua opacidade normal.
