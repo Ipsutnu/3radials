@@ -15826,7 +15826,10 @@ namespace Menu
         const float indicatorAlpha =
             alpha * (isOverflow ? 0.50f : 0.80f) * pulse;
 
-        // Histórico real da posição do marcador. A cauda não é mais uma
+        // Histórico real da posição do marcador, mantido desativado para uma
+        // futura iteração de cauda baseada no movimento real do item.
+#if 0
+        // A cauda não é mais uma
         // projeção matemática do arco: cada segmento ocupa uma posição onde
         // a bolinha realmente esteve. Isso conserva a órbita parada e cria
         // curvas naturais quando o item é arrastado.
@@ -15953,6 +15956,43 @@ namespace Menu
             }
             tailPrevious = tailPoint;
             tailDistance += usedLength;
+        }
+#endif
+
+        // Cauda circular fixa: usa apenas a órbita atual do marcador. O
+        // hover altera o offset/radius inteiro, portanto bolinha e cauda
+        // crescem juntas sem qualquer influência do movimento de drag.
+        const float fixedTailVariation = 0.50f +
+            static_cast<float>((orbitSeed >> 1) & 0xFFFFu) / 65535.0f;
+        const float fixedTailLength = 100.0f * fixedTailVariation * floatScale;
+        const float fixedOrbitRadius = std::max(
+            1.0f, std::sqrt(baseX * baseX + baseY * baseY));
+        const int fixedTailSegments = std::max(
+            16, static_cast<int>(std::ceil(fixedTailLength / 4.0f)));
+        ImVec2 fixedTailPrevious = markerPos;
+        for (int segment = 1; segment <= fixedTailSegments; ++segment)
+        {
+            const float progress = static_cast<float>(segment) /
+                static_cast<float>(fixedTailSegments);
+            const float angleBack = (fixedTailLength * progress) /
+                fixedOrbitRadius;
+            const float tailAngle = orbitAngle - orbitDirection * angleBack;
+            const float tailCos = std::cos(tailAngle);
+            const float tailSin = std::sin(tailAngle);
+            const ImVec2 fixedTailPoint(
+                itemPos.x + baseX * tailCos - baseY * tailSin + ownFloat.x,
+                itemPos.y + baseX * tailSin + baseY * tailCos + ownFloat.y);
+            const float tailAlpha = indicatorAlpha * 0.70f *
+                std::pow(1.0f - progress, 1.35f);
+            if (tailAlpha > 0.001f)
+            {
+                draw->AddLine(
+                    fixedTailPrevious,
+                    fixedTailPoint,
+                    FadeColor(IM_COL32(255, 255, 255, 255), tailAlpha),
+                    1.25f * floatScale);
+            }
+            fixedTailPrevious = fixedTailPoint;
         }
         
         draw->AddCircleFilled(
