@@ -3,6 +3,7 @@
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct IDXGISwapChain;
+struct ID3D11Texture2D;
 
 namespace Blur
 {
@@ -11,6 +12,9 @@ namespace Blur
     bool Initialize(ID3D11Device* device, ID3D11DeviceContext* context,
         IDXGISwapChain* swapChain);
     void SetTarget(bool active);
+    // When the caller already knows which swap-chain image is being
+    // presented, use it instead of assuming buffer zero.
+    void Render(ID3D11Texture2D* target, float deltaTime);
     void Render(float deltaTime);
     void Shutdown();
 

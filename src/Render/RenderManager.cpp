@@ -456,7 +456,11 @@ namespace RenderManager
 
         // Experimental e isolado: uma falha no blur não impede a interface
         // principal de inicializar.
-        Blur::Initialize(g_device, g_context, g_swapChain);
+        if (!Blur::Initialize(g_device, g_context, g_swapChain))
+        {
+            Logger::GetSingleton().Print(
+                "RenderManager: blur is unavailable; UI will continue without it.");
+        }
 
 
         g_initialized = true;
@@ -770,7 +774,7 @@ namespace RenderManager
             }
 
             Present::MarkWatchdogPhase("proxy UI target: Blur::Render");
-            Blur::Render(g_presentDeltaTime);
+            Blur::Render(backBuffer.Get(), g_presentDeltaTime);
 
             auto* target = proxyUiTarget.Get();
             g_context->OMSetRenderTargets(1, &target, proxyUiDepth.Get());
@@ -826,7 +830,7 @@ namespace RenderManager
         // Neste ponto o jogo e o upscaler já terminaram a imagem. O blur e
         // o ImGui são compostos no buffer que será apresentado.
         Present::MarkWatchdogPhase("fallback: Blur::Render");
-        Blur::Render(g_presentDeltaTime);
+        Blur::Render(backBuffer.Get(), g_presentDeltaTime);
 
         if (g_presentBackBuffer.Get() != backBuffer.Get())
         {

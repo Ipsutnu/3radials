@@ -32,6 +32,11 @@ namespace Blur
         UINT g_width = 0;
         UINT g_height = 0;
         DXGI_FORMAT g_format = DXGI_FORMAT_UNKNOWN;
+        UINT g_sampleCount = 1;
+        UINT g_sampleQuality = 0;
+        bool g_loggedNoTarget = false;
+        bool g_loggedTargetFailure = false;
+        bool g_loggedCallerTarget = false;
 
         ComPtr<ID3D11Texture2D> g_sceneTexture;
         ComPtr<ID3D11ShaderResourceView> g_sceneView;
@@ -69,6 +74,8 @@ namespace Blur
             g_width = 0;
             g_height = 0;
             g_format = DXGI_FORMAT_UNKNOWN;
+            g_sampleCount = 1;
+            g_sampleQuality = 0;
         }
 
         bool CompileShader(const char* source, const char* entry,
@@ -221,13 +228,22 @@ namespace Blur
             D3D11_TEXTURE2D_DESC backDesc{};
             backBuffer->GetDesc(&backDesc);
             if (g_sceneTexture && g_width == backDesc.Width &&
-                g_height == backDesc.Height && g_format == backDesc.Format)
+                g_height == backDesc.Height && g_format == backDesc.Format &&
+                g_sampleCount == backDesc.SampleDesc.Count &&
+                g_sampleQuality == backDesc.SampleDesc.Quality)
                 return true;
 
             ReleaseSizedResources();
             g_width = backDesc.Width;
             g_height = backDesc.Height;
             g_format = backDesc.Format;
+            g_sampleCount = backDesc.SampleDesc.Count;
+            g_sampleQuality = backDesc.SampleDesc.Quality;
+
+            Logger::GetSingleton().Print(
+                "Blur: allocating resources {}x{}, format={}, samples={}:{}.",
+                g_width, g_height, static_cast<unsigned int>(g_format),
+                g_sampleCount, g_sampleQuality);
 
             D3D11_TEXTURE2D_DESC scene = backDesc;
             scene.ArraySize = 1;
@@ -237,11 +253,24 @@ namespace Blur
             scene.BindFlags = D3D11_BIND_SHADER_RESOURCE;
             scene.CPUAccessFlags = 0;
             scene.MiscFlags = 0;
-            if (FAILED(g_device->CreateTexture2D(&scene, nullptr,
-                    g_sceneTexture.GetAddressOf())) ||
-                FAILED(g_device->CreateShaderResourceView(g_sceneTexture.Get(),
-                    nullptr, g_sceneView.GetAddressOf())))
+            const HRESULT sceneTextureResult = g_device->CreateTexture2D(&scene,
+                nullptr, g_sceneTexture.GetAddressOf());
+            if (FAILED(sceneTextureResult))
+            {
+                Logger::GetSingleton().Print(
+                    "Blur: failed to create scene texture (HRESULT=0x{:08X}).",
+                    static_cast<unsigned long>(sceneTextureResult));
                 return false;
+            }
+            const HRESULT sceneViewResult = g_device->CreateShaderResourceView(
+                g_sceneTexture.Get(), nullptr, g_sceneView.GetAddressOf());
+            if (FAILED(sceneViewResult))
+            {
+                Logger::GetSingleton().Print(
+                    "Blur: failed to create scene SRV (HRESULT=0x{:08X}).",
+                    static_cast<unsigned long>(sceneViewResult));
+                return false;
+            }
 
             D3D11_TEXTURE2D_DESC blur = scene;
             blur.Width = std::max<UINT>(1, backDesc.Width / kDownsample);
@@ -251,12 +280,24 @@ namespace Blur
             const auto createBlurTexture = [&](ComPtr<ID3D11Texture2D>& texture,
                                                ComPtr<ID3D11ShaderResourceView>& view,
                                                ComPtr<ID3D11RenderTargetView>& target) {
-                return SUCCEEDED(g_device->CreateTexture2D(&blur, nullptr,
-                           texture.GetAddressOf())) &&
-                    SUCCEEDED(g_device->CreateShaderResourceView(texture.Get(),
-                        nullptr, view.GetAddressOf())) &&
-                    SUCCEEDED(g_device->CreateRenderTargetView(texture.Get(),
-                        nullptr, target.GetAddressOf()));
+                const HRESULT textureResult = g_device->CreateTexture2D(&blur,
+                    nullptr, texture.GetAddressOf());
+                const HRESULT viewResult = SUCCEEDED(textureResult)
+                    ? g_device->CreateShaderResourceView(texture.Get(), nullptr,
+                        view.GetAddressOf())
+                    : textureResult;
+                const HRESULT targetResult = SUCCEEDED(viewResult)
+                    ? g_device->CreateRenderTargetView(texture.Get(), nullptr,
+                        target.GetAddressOf())
+                    : viewResult;
+                if (FAILED(targetResult))
+                {
+                    Logger::GetSingleton().Print(
+                        "Blur: failed to create intermediate texture resources (HRESULT=0x{:08X}).",
+                        static_cast<unsigned long>(targetResult));
+                    return false;
+                }
+                return true;
             };
             return createBlurTexture(g_blurTextureA, g_blurViewA, g_blurTargetA) &&
                 createBlurTexture(g_blurTextureB, g_blurViewB, g_blurTargetB);
@@ -328,10 +369,15 @@ namespace Blur
 
     void SetTarget(bool active)
     {
+        if (g_targetActive == active)
+            return;
+
         g_targetActive = active;
+        Logger::GetSingleton().Print("Blur: target {}.",
+            active ? "enabled" : "disabled");
     }
 
-    void Render(float deltaTime)
+    void Render(ID3D11Texture2D* targetTexture, float deltaTime)
     {
         if (!g_initialized)
             return;
@@ -347,23 +393,57 @@ namespace Blur
             return;
         }
 
-        ComPtr<ID3D11Texture2D> backBuffer;
-        if (FAILED(g_swapChain->GetBuffer(0, IID_PPV_ARGS(backBuffer.GetAddressOf()))) ||
-            !CreateSizedResources(backBuffer.Get()))
+        ComPtr<ID3D11Texture2D> ownedBackBuffer;
+        ID3D11Texture2D* backBuffer = targetTexture;
+        if (!backBuffer)
+        {
+            const HRESULT getBufferResult = g_swapChain->GetBuffer(0,
+                IID_PPV_ARGS(ownedBackBuffer.GetAddressOf()));
+            if (FAILED(getBufferResult) || !ownedBackBuffer)
+            {
+                if (!g_loggedNoTarget)
+                {
+                    Logger::GetSingleton().Print(
+                        "Blur: cannot acquire fallback swap-chain buffer 0 (HRESULT=0x{:08X}).",
+                        static_cast<unsigned long>(getBufferResult));
+                    g_loggedNoTarget = true;
+                }
+                return;
+            }
+            backBuffer = ownedBackBuffer.Get();
+        }
+        else if (!g_loggedCallerTarget)
+        {
+            Logger::GetSingleton().Print(
+                "Blur: rendering into the caller-selected present buffer.");
+            g_loggedCallerTarget = true;
+        }
+
+        if (!CreateSizedResources(backBuffer))
             return;
 
         D3D11_TEXTURE2D_DESC backDesc{};
         backBuffer->GetDesc(&backDesc);
         if (backDesc.SampleDesc.Count > 1)
             g_context->ResolveSubresource(g_sceneTexture.Get(), 0,
-                backBuffer.Get(), 0, backDesc.Format);
+                backBuffer, 0, backDesc.Format);
         else
-            g_context->CopyResource(g_sceneTexture.Get(), backBuffer.Get());
+            g_context->CopyResource(g_sceneTexture.Get(), backBuffer);
 
         ComPtr<ID3D11RenderTargetView> backTarget;
-        if (FAILED(g_device->CreateRenderTargetView(backBuffer.Get(), nullptr,
-                backTarget.GetAddressOf())))
+        const HRESULT targetResult = g_device->CreateRenderTargetView(backBuffer,
+            nullptr, backTarget.GetAddressOf());
+        if (FAILED(targetResult))
+        {
+            if (!g_loggedTargetFailure)
+            {
+                Logger::GetSingleton().Print(
+                    "Blur: cannot create render target for active buffer (HRESULT=0x{:08X}).",
+                    static_cast<unsigned long>(targetResult));
+                g_loggedTargetFailure = true;
+            }
             return;
+        }
 
         const UINT blurWidth = std::max<UINT>(1, g_width / kDownsample);
         const UINT blurHeight = std::max<UINT>(1, g_height / kDownsample);
@@ -380,6 +460,11 @@ namespace Blur
             1.0f / static_cast<float>(g_width),
             1.0f / static_cast<float>(g_height), 0.0f, 0.0f,
             g_sceneView.Get());
+    }
+
+    void Render(float deltaTime)
+    {
+        Render(nullptr, deltaTime);
     }
 
     void Shutdown()
@@ -400,6 +485,9 @@ namespace Blur
         g_initialized = false;
         g_targetActive = false;
         g_strength = 0.0f;
+        g_loggedNoTarget = false;
+        g_loggedTargetFailure = false;
+        g_loggedCallerTarget = false;
     }
 
     float Strength()
