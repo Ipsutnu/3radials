@@ -55,6 +55,7 @@ namespace RenderManager
         bool g_backBufferModeDetected = false;
         bool g_restoreCleanBufferAfterPresent = false;
         bool g_loggedCommunityShadersUITarget = false;
+        bool g_loggedSeparateUITarget = false;
 
         bool IsCommunityShadersSwapChainProxy()
         {
@@ -162,6 +163,25 @@ namespace RenderManager
             a_size = ImVec2(static_cast<float>(desc.Width),
                 static_cast<float>(desc.Height));
             return true;
+        }
+
+        // Frame-generation/upscaler proxies may bind a dedicated UI target
+        // before forwarding Present. Compare the underlying resource instead
+        // of relying on a proxy DLL name.
+        bool IsSwapChainBackBuffer(ID3D11RenderTargetView* a_target,
+            ID3D11Texture2D* a_backBuffer)
+        {
+            if (!a_target || !a_backBuffer)
+                return false;
+
+            Microsoft::WRL::ComPtr<ID3D11Resource> targetResource;
+            a_target->GetResource(targetResource.GetAddressOf());
+            if (!targetResource)
+                return false;
+
+            Microsoft::WRL::ComPtr<ID3D11Texture2D> targetTexture;
+            return SUCCEEDED(targetResource.As(&targetTexture)) &&
+                targetTexture.Get() == a_backBuffer;
         }
 
         //float g_globalAlpha = 0.0f;
@@ -658,13 +678,9 @@ namespace RenderManager
 
             Menu::DrawMenu();
 
-            // Inventory3DManager::Render altera o estado da cena/UI 3D do
-            // Skyrim. Ele precisa rodar no passe normal de UI, antes do
-            // Community Shaders finalizar iluminação e composição. Renderizá-
-            // lo dentro de Present fazia o preview restaurar recursos de cena
-            // já processados pelo CS, causando o flicker das luzes ao abrir
-            // ou fechar o item selecionado.
-            ItemPreview::Update();
+            // O Inventory3DManager é atualizado pelo PostDisplay do menu
+            // silencioso Preview. Isso mantém o desenho no ciclo nativo de
+            // UI/3D do Skyrim e evita uma composição duplicada com CS.
 
             /*
             * ============================================================
@@ -730,6 +746,42 @@ namespace RenderManager
         Present::MarkWatchdogPhase("fallback: acquire back buffer");
         if (!AcquireCurrentBackBuffer(backBuffer))
         {
+            return;
+        }
+
+        // Do not require Community Shaders for protected UI composition. A
+        // proxy such as NVIDIA/Streamline Frame Generation can expose its own
+        // active target; draw there whenever it differs from the current
+        // swap-chain buffer.
+        Microsoft::WRL::ComPtr<ID3D11RenderTargetView> proxyUiTarget;
+        Microsoft::WRL::ComPtr<ID3D11DepthStencilView> proxyUiDepth;
+        Present::MarkWatchdogPhase("fallback: inspect active render target");
+        g_context->OMGetRenderTargets(1, proxyUiTarget.GetAddressOf(),
+            proxyUiDepth.GetAddressOf());
+
+        if (proxyUiTarget && !IsSwapChainBackBuffer(proxyUiTarget.Get(),
+                backBuffer.Get()))
+        {
+            if (!g_loggedSeparateUITarget)
+            {
+                Logger::GetSingleton().Print(
+                    "Present: composing Wheel into active off-swap-chain UI target.");
+                g_loggedSeparateUITarget = true;
+            }
+
+            Present::MarkWatchdogPhase("proxy UI target: Blur::Render");
+            Blur::Render(g_presentDeltaTime);
+
+            auto* target = proxyUiTarget.Get();
+            g_context->OMSetRenderTargets(1, &target, proxyUiDepth.Get());
+            ImVec2 targetSize = Resolution::GetRealSize();
+            GetRenderTargetSize(target, targetSize);
+            Resolution::TransformDrawData(ImGui::GetDrawData(), targetSize);
+            Present::MarkWatchdogPhase("proxy UI target: ImGui render");
+            ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+            g_context->OMSetRenderTargets(1, &target, proxyUiDepth.Get());
+            g_restoreCleanBufferAfterPresent = false;
             return;
         }
 
@@ -864,6 +916,7 @@ namespace RenderManager
         g_backBufferModeDetected = false;
         g_restoreCleanBufferAfterPresent = false;
         g_loggedCommunityShadersUITarget = false;
+        g_loggedSeparateUITarget = false;
         g_drawDataReady = false;
 
         g_gameWindow = nullptr;

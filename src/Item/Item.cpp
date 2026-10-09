@@ -835,6 +835,10 @@ namespace ItemPreview
 
         g_modelReady = true;
 
+        // Investigação CS/UI3D — hipótese descartada (2026-10-08): repetir
+        // Begin3D antes de cada Render não corrigiu o preview transparente.
+        // O esquema de iluminação continua sendo definido somente no início.
+
         // Renderiza o preview
         manager->Render();
     }

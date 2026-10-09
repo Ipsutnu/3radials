@@ -96,8 +96,11 @@ namespace ItemPreview
 
     void SilentPreviewMenu::Tick()
     {
-        // The WheelWheel render pass updates the preview after its ImGui
-        // draw data, so the 3D item remains above radial geometry.
+        // O preview 3D precisa ser atualizado no ciclo nativo de menus do
+        // Skyrim. Renderizá-lo manualmente pelo RenderManager fazia o modelo
+        // atravessar uma segunda composição quando Community Shaders estava
+        // ativo, deixando cor/alpha incorretos após o primeiro frame.
+        ItemPreview::Update();
     }
 }
 
