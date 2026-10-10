@@ -21,7 +21,7 @@ namespace IconCustom
 {
     namespace
     {
-        // O pack legado do 3radials usa arte quadrada para os seus ícones.
+        // O pack legado do p-radials usa arte quadrada para os seus ícones.
         // Normalizar os custom assets neste canvas impede que 512/1024 px
         // alterem o tamanho visual relativo a esse fallback.
         constexpr UINT kIconTextureSize = 256;
@@ -140,7 +140,7 @@ namespace IconCustom
         {
             g_sources.clear();
             const auto root = std::filesystem::current_path() / "Data" / "SKSE" /
-                "Plugins" / "3radials" / "Icons";
+                "Plugins" / "p-radials" / "Icons";
             std::error_code error;
             if (!std::filesystem::is_directory(root, error))
                 return;

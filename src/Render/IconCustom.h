@@ -4,7 +4,7 @@
 #include <d3d11.h>
 
 // Resolve ícones externos por keyword: KWD_<EditorID>.svg ou .png em
-// Data/SKSE/Plugins/3radials/Icons. O resolvedor PNG legado continua em
+// Data/SKSE/Plugins/p-radials/Icons. O resolvedor PNG legado continua em
 // Icon.cpp e entra automaticamente como fallback quando não houver match.
 namespace IconCustom
 {

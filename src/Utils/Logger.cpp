@@ -28,12 +28,12 @@ std::filesystem::path GetConfigPath()
         // SKSE::log::log_directory() geralmente aponta para "My Games/Skyrim Special Edition/SKSE"
         // Para salvar diretamente na pasta do jogo Data/SKSE/Plugins:
         return std::filesystem::current_path() / "Data" / "SKSE" / "Plugins" /
-            "3radials" / "3radials.ini";
+            "p-radials" / "p-radials.ini";
     }
 
     // Fallback relativo seguro
     return std::filesystem::path("Data") / "SKSE" / "Plugins" /
-        "3radials" / "3radials.ini";
+        "p-radials" / "p-radials.ini";
 }
 
 
@@ -247,7 +247,7 @@ void Logger::Initialize()
         return;
     }
 
-    auto logPath = directory / "3radials.log";
+    auto logPath = directory / "p-radials.log";
 
     // Reescreve o log a cada nova inicialização do jogo
     auto fileSink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(logPath.string(), true);
@@ -270,6 +270,6 @@ void Logger::Initialize()
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
 
     spdlog::info("========================================");
-    spdlog::info("3radials by Preguissoso - START");
+    spdlog::info("p-radials by Preguissoso - START");
     spdlog::info("========================================");
 }

@@ -263,7 +263,7 @@ namespace Serialization
 
         if (version == 3)
         {
-            struct Version3RadialLockSaveData
+            struct VersionRadialLockSaveData
             {
                 std::uint8_t topLocked;
                 std::uint8_t bottomLocked;
@@ -272,8 +272,8 @@ namespace Serialization
                 std::uint8_t bottomMouseUnlocked;
                 std::uint8_t sideScrollLocked;
             };
-            if (length != sizeof(Version3RadialLockSaveData)) return;
-            Version3RadialLockSaveData data{};
+            if (length != sizeof(VersionRadialLockSaveData)) return;
+            VersionRadialLockSaveData data{};
             if (serialization->ReadRecordData(&data, sizeof(data)) != sizeof(data)) return;
             g_lockTopRadial = data.topLocked != 0;
             g_lockBottomRadial = data.bottomLocked != 0;

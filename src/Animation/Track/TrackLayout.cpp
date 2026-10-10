@@ -377,7 +377,7 @@ namespace Track
     std::filesystem::path Path()
     {
         return std::filesystem::current_path() / "Data" / "SKSE" / "Plugins" /
-            "3radials" / "radials" / "current.txt";
+            "p-radials" / "radials" / "current.txt";
     }
 
     void BeginEdit()

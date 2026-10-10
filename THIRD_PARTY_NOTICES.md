@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-3radials includes and links against third-party software. Each dependency
+p-radials includes and links against third-party software. Each dependency
 remains subject to its own license terms.
 
 ## CommonLibSSE-NG
@@ -46,7 +46,7 @@ Copyright (c) 2013-2014 Mikko Mononen.
 
 Source: <https://github.com/memononen/nanosvg>
 
-3radials uses NanoSVG and NanoSVGRast to parse and rasterize SVG icon assets
+p-radials uses NanoSVG and NanoSVGRast to parse and rasterize SVG icon assets
 in memory. NanoSVG is distributed under the following permissive license:
 
 > This software is provided 'as-is', without any express or implied warranty.
@@ -58,11 +58,11 @@ in memory. NanoSVG is distributed under the following permissive license:
 
 ## SkyUI Icons
 
-Some icons used by 3radials were originally created for SkyUI.
+Some icons used by p-radials were originally created for SkyUI.
 
 Copyright belongs to the original SkyUI icon author Psychosteve.
 
-These assets are not licensed under 3radials' GPL-3.0-or-later license and
+These assets are not licensed under p-radials' GPL-3.0-or-later license and
 remain subject to the original SkyUI permissions. Modifying or redistributing
 the original SkyUI icon files may require permission from their authors.
 

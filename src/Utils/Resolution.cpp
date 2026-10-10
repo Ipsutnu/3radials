@@ -90,7 +90,7 @@ namespace Resolution
 
         SetRenderTargetSize(a_renderTargetSize);
 
-        // This ImGui context is created and owned by WheelWheel. Transforming
+        // This ImGui context is created and owned by p-radials. Transforming
         // its draw data therefore cannot affect another plugin's context.
         for (int listIndex = 0; listIndex < a_drawData->CmdListsCount; ++listIndex)
         {
@@ -101,7 +101,7 @@ namespace Resolution
             for (ImDrawCmd& command : list->CmdBuffer)
             {
                 // ImGui creates every root draw list with a 1920x1080 clip
-                // because WheelWheel renders in virtual coordinates. Geometry
+                // because p-radials renders in virtual coordinates. Geometry
                 // intentionally positioned in the extra area of ultrawide or
                 // taller viewports must not remain clipped to that reference
                 // rectangle. Explicit smaller clips (descriptor, scrolling,

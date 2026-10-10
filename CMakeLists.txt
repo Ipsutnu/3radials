@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(3radials VERSION 1.0.0 LANGUAGES CXX)
+project(p-radials VERSION 1.0.0 LANGUAGES CXX)
 
 # ============================================================
 # CommonLibSSE-NG

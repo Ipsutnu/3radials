@@ -135,7 +135,7 @@ namespace Config
     std::filesystem::path GetConfigPath()
     {
         return std::filesystem::current_path() / "Data" / "SKSE" /
-            "Plugins" / "3radials" / "3radials.ini";
+            "Plugins" / "p-radials" / "p-radials.ini";
     }
 
     void MigrateLegacyStorage()
@@ -144,13 +144,43 @@ namespace Config
         const auto newRoot = newConfig.parent_path();
         const auto plugins = newRoot.parent_path();
         const auto oldConfig = plugins / "Wheel.ini";
-        // Caminho usado pela versão anterior do 3radials. É migrado uma
-        // única vez para dentro da pasta principal de configuração.
+        // Compatibilidade de atualização: os nomes antigos só existem aqui
+        // para importar uma única vez os dados para p-radials.
         const auto previousConfig = plugins / "3radials.ini";
+        const auto previousRoot = plugins / "3radials";
+        const auto interimConfig = plugins / "pradials.ini";
+        const auto interimRoot = plugins / "pradials";
         const auto oldRoot = plugins / "Wheel";
         std::error_code ec;
 
         if (!std::filesystem::exists(newConfig, ec) &&
+            std::filesystem::exists(interimRoot / "pradials.ini", ec))
+        {
+            std::filesystem::create_directories(newRoot, ec);
+            ec.clear();
+            std::filesystem::copy_file(interimRoot / "pradials.ini", newConfig,
+                std::filesystem::copy_options::skip_existing, ec);
+            ec.clear();
+        }
+        else if (!std::filesystem::exists(newConfig, ec) &&
+            std::filesystem::exists(previousRoot / "3radials.ini", ec))
+        {
+            std::filesystem::create_directories(newRoot, ec);
+            ec.clear();
+            std::filesystem::copy_file(previousRoot / "3radials.ini", newConfig,
+                std::filesystem::copy_options::skip_existing, ec);
+            ec.clear();
+        }
+        else if (!std::filesystem::exists(newConfig, ec) &&
+            std::filesystem::exists(interimConfig, ec))
+        {
+            std::filesystem::create_directories(newRoot, ec);
+            ec.clear();
+            std::filesystem::copy_file(interimConfig, newConfig,
+                std::filesystem::copy_options::skip_existing, ec);
+            ec.clear();
+        }
+        else if (!std::filesystem::exists(newConfig, ec) &&
             std::filesystem::exists(previousConfig, ec))
         {
             std::filesystem::create_directories(newRoot, ec);
@@ -169,15 +199,26 @@ namespace Config
             ec.clear();
         }
 
-        if (std::filesystem::exists(oldRoot, ec))
-        {
+        const auto migrateRoot = [&](const std::filesystem::path& sourceRoot,
+            const std::filesystem::path& legacyConfigName) {
+            ec.clear();
+            if (!std::filesystem::exists(sourceRoot, ec))
+            {
+                ec.clear();
+                return;
+            }
+
             std::filesystem::create_directories(newRoot, ec);
             ec.clear();
-            for (const auto& entry : std::filesystem::recursive_directory_iterator(oldRoot, ec))
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(sourceRoot, ec))
             {
                 if (ec) break;
-                const auto relative = std::filesystem::relative(entry.path(), oldRoot, ec);
+                const auto relative = std::filesystem::relative(entry.path(), sourceRoot, ec);
                 if (ec) { ec.clear(); continue; }
+                // The configuration was copied above under its new name.
+                if (entry.is_regular_file() && relative == legacyConfigName)
+                    continue;
+
                 const auto destination = newRoot / relative;
                 if (entry.is_directory())
                     std::filesystem::create_directories(destination, ec);
@@ -190,7 +231,11 @@ namespace Config
                 }
                 ec.clear();
             }
-        }
+        };
+
+        migrateRoot(interimRoot, "pradials.ini");
+        migrateRoot(previousRoot, "3radials.ini");
+        migrateRoot(oldRoot, "Wheel.ini");
 
         // A pasta de layouts também mudou de singular para plural. Preserve
         // current.ini e presets existentes sem apagar a pasta antiga.

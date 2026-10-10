@@ -83,7 +83,7 @@ namespace Blur
         {
             ComPtr<ID3DBlob> errors;
             const HRESULT result = D3DCompile(source, std::strlen(source),
-                "3radials_blur", nullptr, nullptr, entry, target,
+                "p_radials_blur", nullptr, nullptr, entry, target,
                 D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL3,
                 0, bytecode, errors.GetAddressOf());
             if (FAILED(result))

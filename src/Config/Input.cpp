@@ -224,7 +224,7 @@ RE::BSEventNotifyControl InputHandler::ProcessEvent(
                     Menu::CaptureWheelKey(button))
                 {
                     // Consome a tecla capturada para impedir que
-                    // o Skyrim ou o WheelWheel a processe normalmente.
+                    // o Skyrim ou o p-radials a processe normalmente.
 
                     button->GetRuntimeData().value = 0.0f;
 

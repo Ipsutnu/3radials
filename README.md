@@ -1,4 +1,4 @@
-# 3radials
+# p-radials
 
 A radial equipment and item menu SKSE plugin for **The Elder Scrolls V: Skyrim Special Edition / Anniversary Edition / VR Edition**, built with [CommonLibSSE-NG](https://github.com/alandtse/CommonLibSSE-NG).
 
@@ -11,15 +11,15 @@ A radial equipment and item menu SKSE plugin for **The Elder Scrolls V: Skyrim S
 
 Automatic install with Vortex or ModOrganizer2 or manually:
 
-Copy the binary file `3radials.dll` and the folder `3radials` to
+Copy the binary file `p-radials.dll` and the folder `p-radials` to
 		`SKYRIM_FOLDER\Data\SKSE\Plugins\`
 		
-	The main configuration .ini file is located in \3radials
+	The main configuration .ini file is located in `\p-radials\p-radials.ini`
 	
-	Translations should be located in \3radials\languages
-	Icons can be modified in folder \3radials\icons
-	Radial formats are saved in \3radials\radials
-	Layouts with positions and colors are saved in \3radials\layouts
+	Translations should be located in `\p-radials\languages`
+	Icons can be modified in folder `\p-radials\icons`
+	Radial formats are saved in `\p-radials\radials`
+	Layouts with positions and colors are saved in `\p-radials\layouts`
 
 ## Controls
 
@@ -50,7 +50,7 @@ This project uses **CommonLibSSE-NG** and **Dear ImGui** as Git submodules.
 Clone the repository including its submodules:
 
 ```bash
-git clone --recursive https://github.com/Ipsutnu/3radials.git
+git clone --recursive https://github.com/Ipsutnu/p-radials.git
 ```
 
 If you already cloned the repository without `--recursive`, initialize the submodules with:

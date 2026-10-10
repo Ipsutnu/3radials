@@ -894,7 +894,7 @@ namespace ItemIcon
 
 
         const std::filesystem::path basePath =
-            L"Data\\SKSE\\Plugins\\3radials\\Icons";
+            L"Data\\SKSE\\Plugins\\p-radials\\Icons";
 
 
         std::size_t svgLoaded = 0;

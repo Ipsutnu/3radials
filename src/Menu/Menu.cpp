@@ -25354,7 +25354,7 @@ namespace Menu
 
         // Mantém o ImGui sincronizado com a posição real do cursor.
         // Resolution::BeginFrame has already converted the ImGui sample to
-        // WheelWheel's virtual space. Keep the Scaleform cursor synchronized
+        // p-radials' virtual space. Keep the Scaleform cursor synchronized
         // without queuing a second event for the following frame.
         io.MousePos = g_settingsMousePos;
 

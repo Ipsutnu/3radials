@@ -2,7 +2,7 @@
 
 #include <imgui.h>
 
-// WheelWheel is authored in a fixed, virtual 1920x1080 coordinate space.
+// p-radials is authored in a fixed, virtual 1920x1080 coordinate space.
 // This module is the sole bridge between that space, the game window (input),
 // and the D3D render target (output).  They are not necessarily the same when
 // SSE Display Tweaks uses ResolutionScale or an upscaler is active.
@@ -15,10 +15,10 @@ namespace Resolution
     void PrepareFrame();
 
     // Called immediately after ImGui::NewFrame to convert the mouse sample
-    // consumed by ImGui from real pixels to WheelWheel virtual coordinates.
+    // consumed by ImGui from real pixels to p-radials virtual coordinates.
     void BeginFrame();
 
-    // Converts WheelWheel draw data to the target that will actually receive
+    // Converts p-radials draw data to the target that will actually receive
     // the ImGui pass. Call after ImGui::Render() and immediately before the
     // DX11 backend consumes the draw data.
     void TransformDrawData(ImDrawData* a_drawData,

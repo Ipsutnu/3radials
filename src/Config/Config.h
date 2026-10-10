@@ -203,18 +203,18 @@ namespace Config
     inline constexpr float kDefaultTopHorizontalStretch = 42.86f;
     inline constexpr float kDefaultBottomHorizontalStretch = 42.86f;
 
-    // Obtém o caminho do arquivo: "Data/SKSE/Plugins/3radials/3radials.ini"
+    // Obtém o caminho do arquivo: "Data/SKSE/Plugins/p-radials/p-radials.ini"
     std::filesystem::path GetConfigPath();
     std::filesystem::path GetLayoutDirectory();
     std::filesystem::path GetCurrentLayoutPath();
     void MigrateLegacyStorage();
 
-    // Carrega e processa a ToggleKey do arquivo 3radials.ini
+    // Carrega e processa a ToggleKey do arquivo p-radials.ini
     void LoadConfig();
 
     std::string KeyToString(int key);
 
-    // Salva a ToggleKey atual no arquivo 3radials.ini
+    // Salva a ToggleKey atual no arquivo p-radials.ini
     void SaveConfig();
     bool SaveLayoutConfig();
     bool LoadLayoutConfig();

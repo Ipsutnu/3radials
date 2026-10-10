@@ -1,7 +1,7 @@
 #pragma once
 
 void RegisterInputSink();
-// Mantém o sink do WheelWheel antes do PlayerControls. O Skyrim pode
+// Mantém o sink do p-radials antes do PlayerControls. O Skyrim pode
 // reconstruir/reordenar essa lista depois do carregamento inicial.
 void MaintainInputSinkPriority();
 void ResetWheelInputState();
