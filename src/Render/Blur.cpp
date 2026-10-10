@@ -377,6 +377,13 @@ namespace Blur
             active ? "enabled" : "disabled");
     }
 
+    void Reset()
+    {
+        g_targetActive = false;
+        g_strength = 0.0f;
+        Logger::GetSingleton().Print("Blur: reset.");
+    }
+
     void Render(ID3D11Texture2D* targetTexture, float deltaTime)
     {
         if (!g_initialized)

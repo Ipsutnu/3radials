@@ -143,6 +143,7 @@ namespace Config
     extern float g_topOpacity;
     extern float g_bottomOpacity;
     extern float g_fontSizeScale;
+    extern float g_drawMarkDistance;
     extern int g_fontFamily;
     extern float g_sideRadialPosition;
     extern float g_topVerticalPosition;
@@ -197,6 +198,9 @@ namespace Config
     inline constexpr float kDefaultTopOpacity = 100.0f;
     inline constexpr float kDefaultBottomOpacity = 100.0f;
     inline constexpr float kDefaultFontSizeScale = 1.3f;
+    // Distância extra, em pixels virtuais, entre o marcador de Draw e a
+    // borda do slot. Zero deixa o marcador tangente à borda.
+    inline constexpr float kDefaultDrawMarkDistance = 0.0f;
     inline constexpr float kDefaultSideRadialPosition = 56.0f;
     inline constexpr float kDefaultTopVerticalPosition = 13.05f;
     inline constexpr float kDefaultBottomVerticalPosition = 45.76f;

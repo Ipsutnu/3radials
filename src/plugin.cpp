@@ -54,10 +54,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
 
             case SKSE::MessagingInterface::kPreLoadGame:
             {
-                /*
-                 * Se futuramente precisarmos resetar estado
-                 * runtime antes de carregar save.
-                 */
+                Menu::ResetForPreLoadGame();
 
                 break;
             }

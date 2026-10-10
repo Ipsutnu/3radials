@@ -95,6 +95,7 @@ namespace Config
     float g_topOpacity = kDefaultTopOpacity;
     float g_bottomOpacity = kDefaultBottomOpacity;
     float g_fontSizeScale = kDefaultFontSizeScale;
+    float g_drawMarkDistance = kDefaultDrawMarkDistance;
     int g_fontFamily = 0;
     float g_sideRadialPosition = kDefaultSideRadialPosition;
     float g_topVerticalPosition = kDefaultTopVerticalPosition;
@@ -665,6 +666,7 @@ namespace Config
             else if (key == "TopOpacity") target = &g_topOpacity;
             else if (key == "BottomOpacity") target = &g_bottomOpacity;
             else if (key == "FontSizeScale") { target = &g_fontSizeScale; minimum = 1.0f; maximum = 2.5f; }
+            else if (key == "DrawMarkDistance") { target = &g_drawMarkDistance; minimum = 0.0f; maximum = 100.0f; }
             else if (key == "SideRadialPosition") target = &g_sideRadialPosition;
             else if (key == "TopVerticalPosition") target = &g_topVerticalPosition;
             else if (key == "BottomVerticalPosition") target = &g_bottomVerticalPosition;
@@ -756,7 +758,7 @@ namespace Config
         write("ShowOverflowIcon", g_showOverflowIcon ? 1 : 0);
         write("StardustEnabled", g_stardustEnabled ? 1 : 0);
         write("StardustFade", g_stardustFade);
-        write("FontSizeScale", g_fontSizeScale); write("FontFamily", g_fontFamily);
+        write("FontSizeScale", g_fontSizeScale); write("DrawMarkDistance", g_drawMarkDistance); write("FontFamily", g_fontFamily);
         write("CenterOpacity", g_centerOpacity); write("RadialQuantity", g_radialQuantity);
         write("RadialStretch", g_radialStretch);
         write("ItemOpacity", g_itemOpacity); write("GeneralItemSize", g_generalItemSize);
@@ -1170,6 +1172,17 @@ namespace Config
                         // Mantem o valor padrao.
                     }
                 }
+                else if (key == "DrawMarkDistance")
+                {
+                    try
+                    {
+                        g_drawMarkDistance = std::clamp(std::stof(value), 0.0f, 100.0f);
+                    }
+                    catch (...)
+                    {
+                        // Mantem o valor padrao.
+                    }
+                }
                 else if (key == "FontFamily")
                 {
                     try { g_fontFamily = std::clamp(std::stoi(value), 0, 8); }
@@ -1431,6 +1444,7 @@ namespace Config
         g_topOpacity = kDefaultTopOpacity;
         g_bottomOpacity = kDefaultBottomOpacity;
         g_fontSizeScale = kDefaultFontSizeScale;
+        g_drawMarkDistance = kDefaultDrawMarkDistance;
         g_fontFamily = 0;
         g_sideRadialPosition = kDefaultSideRadialPosition;
         g_topVerticalPosition = kDefaultTopVerticalPosition;
@@ -1590,6 +1604,7 @@ namespace Config
         SetIniValue(lines, "Layout", "TopOpacity", std::to_string(g_topOpacity));
         SetIniValue(lines, "Layout", "BottomOpacity", std::to_string(g_bottomOpacity));
         SetIniValue(lines, "Layout", "FontSizeScale", std::to_string(g_fontSizeScale));
+        SetIniValue(lines, "Layout", "DrawMarkDistance", std::to_string(g_drawMarkDistance));
         SetIniValue(lines, "Layout", "FontFamily", std::to_string(g_fontFamily));
         SetIniValue(lines, "Layout", "SideRadialPosition", std::to_string(g_sideRadialPosition));
         SetIniValue(lines, "Layout", "TopVerticalPosition", std::to_string(g_topVerticalPosition));

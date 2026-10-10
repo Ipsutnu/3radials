@@ -641,6 +641,7 @@ namespace Menu
     enum class LayoutSlider : std::size_t
     {
         FontSize,
+        DrawMarkDistance,
         ItemOpacity,
         RadialLineOpacity,
         GeneralItemSize,
@@ -4223,6 +4224,7 @@ namespace Menu
                     case LayoutSlider::BottomIconSize: Config::g_bottomItemStyle.iconSize = Config::kDefaultIconSize; break;
                     case LayoutSlider::BottomIconOpacity: Config::g_bottomItemStyle.iconOpacity = Config::kDefaultBaseIconOpacity; break;
                     case LayoutSlider::FontSize: Config::g_fontSizeScale = Config::kDefaultFontSizeScale; break;
+                    case LayoutSlider::DrawMarkDistance: Config::g_drawMarkDistance = Config::kDefaultDrawMarkDistance; break;
                     case LayoutSlider::SidePosition: Config::g_sideRadialPosition = Config::kDefaultSideRadialPosition; break;
                     case LayoutSlider::TopPosition: Config::g_topVerticalPosition = Config::kDefaultTopVerticalPosition; break;
                     case LayoutSlider::BottomPosition: Config::g_bottomVerticalPosition = Config::kDefaultBottomVerticalPosition; break;
@@ -5384,6 +5386,7 @@ namespace Menu
         else switch (selectedLayoutSlider)
         {
         case LayoutSlider::FontSize: value = &Config::g_fontSizeScale; minimum = 1.0f; maximum = 2.5f; step = 0.05f; break;
+        case LayoutSlider::DrawMarkDistance: value = &Config::g_drawMarkDistance; minimum = 0.0f; maximum = 100.0f; step = 1.0f; break;
         case LayoutSlider::ItemOpacity: value = &Config::g_itemOpacity; break;
         case LayoutSlider::GeneralItemSize: value = &Config::g_generalItemSize; minimum = 25.0f; maximum = 200.0f; break;
         case LayoutSlider::SlotSize: value = &Config::g_slotSize; minimum = 25.0f; maximum = 200.0f; break;
@@ -7482,6 +7485,27 @@ namespace Menu
             return;
         Blur::SetTarget(desired);
         g_gameplayBlurApplied = desired;
+    }
+
+    void ResetForPreLoadGame()
+    {
+        // O save pode ser carregado no mesmo processo enquanto o radial ainda
+        // está aberto. Não dependemos do fade/outro frame: zeramos o estado
+        // visual e o pós-processamento antes de o novo jogo ser aplicado.
+        Slowtime::End();
+        Blur::Reset();
+        g_gameplayBlurApplied = false;
+
+        g_showWindow = false;
+        g_globalAlpha = 0.0f;
+        g_menuAlpha = 0.0f;
+        g_radialSide = RadialSide::None;
+        g_radialLocked = false;
+        g_radialToggleLocked = false;
+        g_ignoreNextGRelease = false;
+        ResetRadialLockedOpen();
+
+        spdlog::info("PRELOAD RESET | radial closed and blur cleared");
     }
 
 
@@ -16116,30 +16140,16 @@ namespace Menu
         (void)radialCenter;
         (void)directionMode;
 
-        // Mantém a mesma distância-base do contador de quantidade. Quando o
-        // contador não é exibido (quantidade 1), o ponto ainda conserva uma
-        // posição estável e previsível.
-        const float fontScale = std::clamp(Config::g_fontSizeScale, 1.0f, 2.5f);
-        
-        const float badgeRadius = (
-            quantity >= 10000 ? 18.0f :
-            quantity >= 1000 ? 15.5f :
-            quantity >= 100 ? 13.5f :
-            11.5f) * fontScale;
-        
-        // O ponto fica quinze pixels mais perto do ícone que o contador.
-        // No hover ele é repelido suavemente para fora, no mesmo sentido do
-        // contador quando este se afasta do item.
+        (void)quantity;
+
+        // A distância é medida a partir da borda do slot, nunca da fonte do
+        // contador. Assim alterar Font Size não desloca a órbita. Em zero a
+        // bolinha é tangente à borda; em 100 há ~76 px virtuais de espaço.
         
         hoverT = std::clamp(hoverT, 0.0f, 1.0f);
         
         const float smoothHover = hoverT * hoverT * (3.0f - 2.0f * hoverT);
         
-        const float offset = std::max(
-            itemRadius + 2.0f,
-            itemRadius + badgeRadius + 3.0f - 15.0f) +
-            16.0f * smoothHover;
-
         // Pequena flutuação própria: ela se soma ao deslocamento do item,
         // por isso o marcador não parece preso à animação do slot.
         const float time = static_cast<float>(ImGui::GetTime());
@@ -16173,6 +16183,12 @@ namespace Menu
 
         
         const float floatScale = isOverflow ? 0.80f : 1.0f;
+        const float pointRadius = 3.6f * floatScale;
+        constexpr float kMaximumDrawMarkGap = 76.0f;
+        const float edgeGap = std::clamp(Config::g_drawMarkDistance, 0.0f, 100.0f) /
+            100.0f * kMaximumDrawMarkGap;
+        const float offset = itemRadius + pointRadius + edgeGap +
+            16.0f * smoothHover;
         
         const ImVec2 ownFloat(
             std::sin(time * 1.25f + phase) * 1.35f * floatScale,
@@ -16198,8 +16214,6 @@ namespace Menu
 
         // Mesmo desenho do cursor do WheelSettings, 10% menor. Excedentes
         // recebem mais 20% de redução e metade da opacidade dos principais.
-        const float pointRadius = 3.6f * floatScale;
-        
         const float indicatorAlpha =
             alpha * (isOverflow ? 0.50f : 0.80f) * pulse;
 
@@ -20715,7 +20729,7 @@ namespace Menu
         draw->AddCircleFilled(
             ImVec2(mouse.x + 1.5f, mouse.y + 1.5f),
             5.0f,
-            IM_COL32(0, 0, 0, 160),
+            IM_COL32(0, 0, 0, 70),
             16
         );
 
@@ -24158,6 +24172,7 @@ namespace Menu
         float radialRotationDegrees = Track::RadialRotation() * 57.2957795f;
         SliderData sliders[] = {
             { Language::Get("font_size").c_str(), &Config::g_fontSizeScale, 1.0f, 2.5f },
+            { Language::Get("draw_mark_distance").c_str(), &Config::g_drawMarkDistance, 0.0f, 100.0f },
             { Language::Get("item_opacity").c_str(), &Config::g_itemOpacity, 0.0f, 100.0f },
             { Language::Get("layout_radial_line_opacity").c_str(), &radialLineOpacity, 0.0f, 100.0f },
             { Language::Get("general_item_size").c_str(), &Config::g_generalItemSize, 25.0f, 200.0f },
@@ -24299,7 +24314,7 @@ namespace Menu
         std::array<int, 4> itemToggleRows{ -1, -1, -1, -1 };
         
         for (int& row : itemToggleRows) row = nextRow++;
-        
+        addSliderRow(LayoutSlider::DrawMarkDistance);
 
         const int itemPreviewHeaderRow = nextRow++;
         

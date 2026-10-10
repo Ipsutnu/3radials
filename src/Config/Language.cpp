@@ -59,6 +59,7 @@ namespace Language
             { "show_item_preview", "Show Item Preview during Gameplay" },
             { "show_item_quantity", "Show Item Quantity" },
             { "show_overflow_icon", "Show Icon inside Overflow" },
+            { "draw_mark_distance", "Draw Mark Distance" },
             { "item_opacity", "General Item Opacity" },
             { "general_item_size", "General Item Size" },
             { "slot_section", "SLOT" }, { "icon_section", "ICON" },

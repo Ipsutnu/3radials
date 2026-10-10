@@ -107,6 +107,7 @@ namespace Menu {
     void HandleSettingsScroll();
 
     void ResetSettingsItemInfo();
+    void ResetForPreLoadGame();
 
     void CloseRadialMenu();
     void ResetRadialLockedOpen();
