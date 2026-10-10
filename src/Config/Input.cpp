@@ -774,6 +774,15 @@ RE::BSEventNotifyControl InputHandler::ProcessEvent(
                 const bool firstDown = buttonEvent->IsDown() &&
                     buttonEvent->GetRuntimeData().heldDownSecs <= 0.0f;
                 const bool released = !buttonEvent->IsPressed();
+                const bool topBottomHandled = firstDown &&
+                    Menu::HandleTopBottomGameplayMouseButton(mouseButton, true);
+                if (topBottomHandled)
+                {
+                    // O clique que confirmou o item vertical pertence ao
+                    // Wheel e nunca deve acionar uma ação do Skyrim.
+                    consumeButton(buttonEvent);
+                    continue;
+                }
                 const bool quickDrawActive = Menu::IsQuickDrawGameplayActive();
                 const bool handled = firstDown
                     ? Menu::BeginQuickDrawGameplayStroke(mouseButton, true)

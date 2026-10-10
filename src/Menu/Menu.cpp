@@ -2723,6 +2723,89 @@ namespace Menu
 
     static PendingTwoHandedWeaponEquip g_pendingTwoHandedWeaponEquip;
 
+    enum class SpellHandRefreshStage
+    {
+        None,
+        WaitingForSheathe,
+        WaitingForRedraw
+    };
+
+    struct PendingSpellHandRefresh
+    {
+        SpellHandRefreshStage stage = SpellHandRefreshStage::None;
+        RE::ActorHandle actor;
+        RE::FormID spellID = 0;
+        bool leftSide = false;
+        bool wasWeaponDrawn = false;
+        bool spellChangeApplied = false;
+        bool redrawRequested = false;
+        std::uint8_t stableEmptyHandFrames = 0;
+        std::chrono::steady_clock::time_point stageTime;
+    };
+
+    static PendingSpellHandRefresh g_pendingSpellHandRefresh;
+
+    struct SpellUnequipAnimationCapture
+    {
+        RE::ActorHandle actor;
+        std::chrono::steady_clock::time_point expiresAt;
+        bool active = false;
+    };
+
+    static SpellUnequipAnimationCapture g_spellUnequipAnimationCapture;
+
+    class SpellUnequipAnimationListener final :
+        public RE::BSTEventSink<RE::BSAnimationGraphEvent>
+    {
+    public:
+        static SpellUnequipAnimationListener* GetSingleton()
+        {
+            static SpellUnequipAnimationListener instance;
+            return &instance;
+        }
+
+        RE::BSEventNotifyControl ProcessEvent(
+            const RE::BSAnimationGraphEvent* event,
+            RE::BSTEventSource<RE::BSAnimationGraphEvent>*) override
+        {
+            auto& capture = g_spellUnequipAnimationCapture;
+            if (!capture.active || !event ||
+                std::chrono::steady_clock::now() > capture.expiresAt)
+            {
+                capture.active = false;
+                return RE::BSEventNotifyControl::kContinue;
+            }
+
+            auto actor = capture.actor.get();
+            if (!actor || event->holder != actor.get())
+                return RE::BSEventNotifyControl::kContinue;
+
+            spdlog::info(
+                "SPELL UNEQUIP ANIM EVENT | tag='{}' | payload='{}'",
+                event->tag.c_str(), event->payload.c_str());
+            return RE::BSEventNotifyControl::kContinue;
+        }
+    };
+
+    static void BeginSpellUnequipAnimationCapture(RE::Actor* actor)
+    {
+        if (!actor)
+            return;
+
+        auto& capture = g_spellUnequipAnimationCapture;
+        capture.actor = actor->GetHandle();
+        capture.expiresAt = std::chrono::steady_clock::now() +
+            std::chrono::seconds(3);
+        const bool registeredNow = actor->AddAnimationGraphEventSink(
+            SpellUnequipAnimationListener::GetSingleton());
+        // AddAnimationGraphEventSink retorna false também quando o listener
+        // já está conectado ao graph; nesse caso a captura continua válida.
+        capture.active = true;
+
+        spdlog::info("SPELL UNEQUIP ANIM CAPTURE | active=true | registeredNow={}",
+            registeredNow);
+    }
+
         
     class RadialUniqueIDListener :
         public RE::BSTEventSink<RE::TESUniqueIDChangeEvent>
@@ -6741,6 +6824,20 @@ namespace Menu
 
     bool g_topHasSelection = false;
     bool g_bottomHasSelection = false;
+
+    // Top/Bottom não representa uma mão por si só. Guardamos o último
+    // sentido do scroll para decidir a mão quando não houver clique direto.
+    static bool g_topBottomLastScrollEquipLeft = false;
+
+    enum class TopBottomHandOverride
+    {
+        None,
+        Left,
+        Right
+    };
+
+    static TopBottomHandOverride g_topBottomHandOverride =
+        TopBottomHandOverride::None;
 
     static void ClearTopBottomGamepadSelection(RadialSide side)
     {
@@ -12360,6 +12457,228 @@ namespace Menu
             pending.weaponID, pending.wasWeaponDrawn);
     }
 
+    static bool UnequipSpellFromHand(
+        RE::Actor* actor,
+        RE::SpellItem* spell,
+        bool leftSide);
+
+    static void RequestSpellHandUnequip(
+        RE::Actor* actor,
+        RE::SpellItem* spell,
+        bool leftSide)
+    {
+        if (!actor || !spell)
+            return;
+
+        g_pendingSpellHandRefresh = {};
+
+        const auto otherHandSlot = leftSide
+            ? RE::Actor::SlotTypes::kRightHand
+            : RE::Actor::SlotTypes::kLeftHand;
+        auto& actorData = actor->GetActorRuntimeData();
+
+        // Com somente a magia esquerda equipada, usa o nativo Papyrus com a
+        // fonte esquerda explícita. Este teste mantém o desequipamento por
+        // mão, sem DeselectSpell nem sinais artificiais do animation graph.
+        if (leftSide && actorData.selectedSpells[otherHandSlot] == nullptr)
+        {
+            // O weapon state global não identifica de forma confiável uma
+            // magia isolada à esquerda. Forçamos o ciclo das mãos para este
+            // caso, inclusive quando o ator já reporta Sheathed.
+            auto& pending = g_pendingSpellHandRefresh;
+            pending = {};
+            pending.stage = SpellHandRefreshStage::WaitingForSheathe;
+            pending.actor = actor->GetHandle();
+            pending.spellID = spell->GetFormID();
+            pending.leftSide = true;
+            pending.wasWeaponDrawn = true;
+            pending.stageTime = std::chrono::steady_clock::now();
+
+            actor->DrawWeaponMagicHands(false);
+            spdlog::info("SPELL UNEQUIP | forced sheathe before sole left-hand Papyrus unequip | form={:08X}",
+                spell->GetFormID());
+            return;
+        }
+
+        // A mão direita (e casos com magia na outra mão) conserva o caminho
+        // nativo já validado. A captura permanece ativa para diagnóstico.
+        if (actorData.selectedSpells[otherHandSlot] == nullptr)
+            BeginSpellUnequipAnimationCapture(actor);
+
+        if (!UnequipSpellFromHand(actor, spell, leftSide))
+        {
+            spdlog::warn("SPELL UNEQUIP | failed to dispatch Actor.UnequipSpell | form={:08X}",
+                spell->GetFormID());
+        }
+    }
+
+    static bool UnequipSpellFromHand(
+        RE::Actor* actor,
+        RE::SpellItem* spell,
+        bool leftSide)
+    {
+        auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+        if (!actor || !spell || !vm)
+            return false;
+
+        auto* handlePolicy = vm->GetObjectHandlePolicy();
+        if (!handlePolicy)
+            return false;
+
+        const auto actorHandle =
+            handlePolicy->GetHandleForObject(actor->GetFormType(), actor);
+        if (actorHandle == handlePolicy->EmptyHandle())
+            return false;
+
+        // Actor.UnequipSpell recebe a mão explicitamente (0 = esquerda,
+        // 1 = direita). Diferente de DeselectSpell, ele não remove a mesma
+        // magia da outra mão nem deixa o graph de magia sem a transição nativa.
+        RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> result;
+        const auto source = static_cast<std::uint32_t>(leftSide ? 0 : 1);
+        return vm->DispatchMethodCall(
+            actorHandle,
+            RE::BSFixedString("Actor"),
+            RE::BSFixedString("UnequipSpell"),
+            RE::MakeFunctionArguments(
+                static_cast<RE::SpellItem*>(spell),
+                static_cast<std::uint32_t>(source)),
+            result);
+    }
+
+    static bool IsMagicHandTransitionActive(RE::Actor* actor)
+    {
+        if (!actor)
+            return false;
+
+        // Esses sinais existem nos graphs de personagem que usam a transição
+        // padrão de equipar/guardar. Caso um graph customizado não os exponha,
+        // a confirmação do slot vazio abaixo continua sendo o fallback.
+        bool equipping = false;
+        bool unequipping = false;
+        const bool hasEquippingState = actor->GetGraphVariableBool(
+            RE::BSFixedString("IsEquipping"), equipping);
+        const bool hasUnequippingState = actor->GetGraphVariableBool(
+            RE::BSFixedString("IsUnequipping"), unequipping);
+
+        return (hasEquippingState && equipping) ||
+               (hasUnequippingState && unequipping);
+    }
+
+    void UpdatePendingSpellHandRefresh()
+    {
+        auto& pending = g_pendingSpellHandRefresh;
+        if (pending.stage == SpellHandRefreshStage::None)
+            return;
+
+        auto actorPtr = pending.actor.get();
+        auto* actor = actorPtr ? actorPtr.get() : nullptr;
+        auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(pending.spellID);
+        if (!actor || !spell)
+        {
+            pending = {};
+            return;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        const float elapsed = std::chrono::duration<float>(now - pending.stageTime).count();
+
+        if (pending.stage == SpellHandRefreshStage::WaitingForSheathe)
+        {
+            // A magia esquerda isolada pode reportar Sheathed antes mesmo do
+            // graph processar o DrawWeaponMagicHands(false). Aguardamos uma
+            // janela fixa em vez de confiar nesse estado global.
+            constexpr float forcedSheatheDelay = 0.35f;
+            if (elapsed < forcedSheatheDelay)
+                return;
+
+            // Usa a API nativa do Actor com a mão alvo. DeselectSpell é
+            // global por magia e podia remover ambas as mãos sem concluir a
+            // transição de animação da mão que acabou vazia.
+            if (!UnequipSpellFromHand(actor, spell, pending.leftSide))
+            {
+                spdlog::warn("SPELL UNEQUIP | failed to dispatch Actor.UnequipSpell | form={:08X}",
+                    pending.spellID);
+                pending = {};
+                return;
+            }
+
+            // Sem uma magia na outra mão, o Skyrim precisa de um frame curto
+            // para consolidar as mãos vazias antes do redraw.
+            pending.spellChangeApplied = true;
+            pending.stage = SpellHandRefreshStage::WaitingForRedraw;
+            pending.stageTime = now;
+            return;
+        }
+
+        if (pending.stage == SpellHandRefreshStage::WaitingForRedraw)
+        {
+            // Este estágio também é usado quando o personagem já estava com
+            // as mãos guardadas: nesse caso não há animação para redesenhar.
+            if (!pending.spellChangeApplied)
+            {
+                if (!UnequipSpellFromHand(actor, spell, pending.leftSide))
+                {
+                    spdlog::warn("SPELL UNEQUIP | failed to dispatch Actor.UnequipSpell | form={:08X}",
+                        pending.spellID);
+                    pending = {};
+                    return;
+                }
+                pending.spellChangeApplied = true;
+                pending.stageTime = now;
+                return;
+            }
+
+            if (!pending.wasWeaponDrawn)
+            {
+                pending = {};
+                return;
+            }
+
+            if (!pending.redrawRequested)
+            {
+                const auto handSlot = pending.leftSide
+                    ? RE::Actor::SlotTypes::kLeftHand
+                    : RE::Actor::SlotTypes::kRightHand;
+                const bool stillEquipped =
+                    actor->GetActorRuntimeData().selectedSpells[handSlot] == spell;
+
+                // Não usamos mais um atraso fixo. A transição só prossegue
+                // quando o Papyrus limpou o slot e o graph está estável por
+                // alguns frames consecutivos, evitando sacar no meio do
+                // guardar e provocar o flick visual.
+                const bool safeToRedraw =
+                    !stillEquipped &&
+                    !actor->IsWeaponDrawn() &&
+                    !IsMagicHandTransitionActive(actor);
+                if (!safeToRedraw)
+                {
+                    pending.stableEmptyHandFrames = 0;
+                    if (elapsed >= 2.0f)
+                    {
+                        spdlog::warn("SPELL UNEQUIP | hand did not reach a stable empty state | form={:08X}",
+                            pending.spellID);
+                        pending = {};
+                    }
+                    return;
+                }
+
+                constexpr std::uint8_t stableFramesRequired = 4;
+                if (++pending.stableEmptyHandFrames < stableFramesRequired)
+                    return;
+
+                pending.redrawRequested = true;
+                pending.stageTime = now;
+                actor->DrawWeaponMagicHands(true);
+                return;
+            }
+
+            if (!actor->IsWeaponDrawn() && elapsed < 2.0f)
+                return;
+        }
+
+        pending = {};
+    }
+
     void UpdatePendingWeaponAction()
     {
         auto& pending = g_pendingWeaponAction;
@@ -12736,13 +13055,28 @@ namespace Menu
         
         // O gesto do Quick Draw escolhe explicitamente a mão pelo botão que
         // iniciou o traço, independentemente do radial que continha o item.
-        const bool leftSide = quickDrawSelection
+        bool leftSide = quickDrawSelection
             ? g_quickDrawGameplayEquipLeft
             : actionSide == RadialSide::Left;
-        
-        const bool rightSide = actionSide == RadialSide::Right;
-        
-        (void)rightSide;
+
+        const bool topBottomSelection =
+            actionSide == RadialSide::Top || actionSide == RadialSide::Bottom;
+        if (topBottomSelection && !quickDrawSelection)
+        {
+            // O clique tem a maior prioridade e ignora tanto o estado das
+            // mãos quanto o sentido do scroll.
+            if (g_topBottomHandOverride != TopBottomHandOverride::None)
+            {
+                leftSide = g_topBottomHandOverride == TopBottomHandOverride::Left;
+            }
+            else
+            {
+                // Sem clique, o sentido do scroll decide sempre a mão:
+                // baixo usa a esquerda; cima, a direita. Não há exceção
+                // baseada em uma mão já ocupada ou vazia.
+                leftSide = g_topBottomLastScrollEquipLeft;
+            }
+        }
 
         // ============================================================
         // LOCKPICKS (faltava esse ramo por completo)
@@ -12808,12 +13142,25 @@ namespace Menu
             // EquipSpell chama uma função relocada do engine; como este
             // caminho nasce do draw/render hook, despachamos a operação para
             // a thread principal, igual ao tratamento já usado para livros.
-            auto equipSpell = [actor, spell, spellSlot]()
+            // UnequipSpell recebe a mão alvo e preserva a outra mão quando
+            // ambas usam a mesma magia.
+            const auto handSlot = leftSide
+                ? RE::Actor::SlotTypes::kLeftHand
+                : RE::Actor::SlotTypes::kRightHand;
+            auto equipSpell = [actor, spell, spellSlot, handSlot, leftSide]()
             {
                 auto* manager = RE::ActorEquipManager::GetSingleton();
                 if (manager)
                 {
-                    manager->EquipSpell(actor, spell, spellSlot);
+                    auto& actorData = actor->GetActorRuntimeData();
+                    const bool alreadyEquipped =
+                        actorData.selectedSpells[handSlot] == spell;
+                    if (alreadyEquipped)
+                    {
+                        RequestSpellHandUnequip(actor, spell, leftSide);
+                    }
+                    else
+                        manager->EquipSpell(actor, spell, spellSlot);
                 }
             };
 
@@ -14895,6 +15242,36 @@ namespace Menu
         const ImVec2 center = Resolution::GetVirtualCenter();
         AddQuickDrawPoint(g_quickDrawGameplayStroke, GetRadialMousePosition(),
             center, QUICK_DRAW_EDITOR_RADIUS);
+        return true;
+    }
+
+    bool HandleTopBottomGameplayMouseButton(int button, bool pressed)
+    {
+        if (!pressed || (button != 0 && button != 1) ||
+            g_radialMode != RadialMode::Gameplay || !g_showWindow ||
+            (g_radialSide != RadialSide::Top &&
+                g_radialSide != RadialSide::Bottom))
+        {
+            return false;
+        }
+
+        const bool hasSelection = g_radialSide == RadialSide::Top
+            ? g_topHasSelection
+            : g_bottomHasSelection;
+        if (!hasSelection)
+            return false;
+
+        // Clique explícito escolhe a mão e conclui o radial imediatamente,
+        // mesmo se a tecla de ativação continuar pressionada.
+        g_topBottomHandOverride = button == 0
+            ? TopBottomHandOverride::Left
+            : TopBottomHandOverride::Right;
+        UseSelectedRadialItem();
+        g_topBottomHandOverride = TopBottomHandOverride::None;
+
+        // A soltura posterior da tecla não pode selecionar o item novamente.
+        g_ignoreNextGRelease = true;
+        CloseRadialMenu();
         return true;
     }
 
@@ -19939,6 +20316,10 @@ namespace Menu
     {
         if (direction == 0)
             return;
+
+        // Scroll para baixo (direção negativa) seleciona a mão esquerda;
+        // scroll para cima seleciona a direita.
+        g_topBottomLastScrollEquipLeft = direction < 0;
 
         // ============================================================
         // TOP

@@ -102,6 +102,7 @@ namespace Menu {
     void UpdatePendingWeaponSwitch();
     void UpdatePendingNormalWeaponEquip();
     void UpdatePendingTwoHandedWeaponEquip();
+    void UpdatePendingSpellHandRefresh();
     void UpdatePendingWeaponAction();
     void HandleSettingsScroll();
 
@@ -179,6 +180,7 @@ namespace Menu {
     bool IsQuickDrawEditorOpen();
     bool HandleQuickDrawEditorMouseButton(int button, bool pressed);
     bool BeginQuickDrawGameplayStroke(int button, bool pressed);
+    bool HandleTopBottomGameplayMouseButton(int button, bool pressed);
     bool IsQuickDrawGameplayActive();
     void SaveQuickDraw(SKSE::SerializationInterface* serialization);
     bool LoadQuickDraw(SKSE::SerializationInterface* serialization,
