@@ -3,11 +3,129 @@
 
 #include <imgui.h>
 #include <algorithm>
+#include <cctype>
 #include <unordered_map>
 #include <cstdint>
 
 namespace ItemInfo
 {   
+    static std::string ExtractPlainBookText(std::string_view source)
+    {
+        std::string result;
+        result.reserve(source.size());
+
+        const auto appendBreak = [&result](bool paragraph)
+        {
+            const std::size_t breaks = paragraph ? 2 : 1;
+            for (std::size_t i = 0; i < breaks; ++i)
+            {
+                if (result.empty() || result.back() != '\n')
+                    result.push_back('\n');
+                else if (paragraph && result.size() < 2 ||
+                    (paragraph && result[result.size() - 2] != '\n'))
+                    result.push_back('\n');
+            }
+        };
+
+        for (std::size_t i = 0; i < source.size();)
+        {
+            // Comentários não fazem parte do conteúdo exibido pelo livro.
+            if (source.compare(i, 4, "<!--") == 0)
+            {
+                const auto end = source.find("-->", i + 4);
+                i = end == std::string_view::npos ? source.size() : end + 3;
+                continue;
+            }
+
+            // Pagebreak só separa páginas no BookMenu; no painel ele vira
+            // uma separação de parágrafo.
+            if (source.compare(i, 11, "[pagebreak]") == 0)
+            {
+                appendBreak(true);
+                i += 11;
+                continue;
+            }
+
+            if (source[i] == '<')
+            {
+                const auto end = source.find('>', i + 1);
+                if (end == std::string_view::npos)
+                {
+                    ++i;
+                    continue;
+                }
+
+                std::string tag(source.substr(i + 1, end - i - 1));
+                std::transform(tag.begin(), tag.end(), tag.begin(),
+                    [](unsigned char character)
+                    {
+                        return static_cast<char>(std::tolower(character));
+                    });
+
+                const auto firstSpace = tag.find_first_of(" \t\r\n");
+                const std::string_view name(tag.data(),
+                    firstSpace == std::string::npos ? tag.size() : firstSpace);
+
+                if (name == "br" || name == "br/")
+                    appendBreak(false);
+                else if (name == "p" || name == "/p" ||
+                    name == "ul" || name == "/ul")
+                    appendBreak(true);
+                else if (name == "li")
+                {
+                    appendBreak(false);
+                    result += "- ";
+                }
+                else if (name == "/li")
+                    appendBreak(false);
+
+                else if (name == "img")
+                {
+                    // As letras iluminadas usam o padrão
+                    // Illuminated_Letters/X_letter.png. Preservamos sua
+                    // inicial como texto, enquanto outras imagens seguem
+                    // omitidas do painel.
+                    constexpr std::string_view illuminatedPath =
+                        "illuminated_letters/";
+                    const auto letterOffset = tag.find(illuminatedPath);
+                    if (letterOffset != std::string::npos)
+                    {
+                        const auto letterIndex = letterOffset + illuminatedPath.size();
+                        if (letterIndex < tag.size() &&
+                            std::isalpha(static_cast<unsigned char>(tag[letterIndex])))
+                        {
+                            result.push_back(static_cast<char>(std::toupper(
+                                static_cast<unsigned char>(tag[letterIndex]))));
+                        }
+                    }
+                }
+
+                // b/i/u/font e quaisquer outras tags são ignoradas; somente
+                // o conteúdo textual entre elas é preservado.
+                i = end + 1;
+                continue;
+            }
+
+            if (source[i] != '\r')
+                result.push_back(source[i]);
+            ++i;
+        }
+
+        while (!result.empty() && std::isspace(
+            static_cast<unsigned char>(result.back())))
+        {
+            result.pop_back();
+        }
+
+        std::size_t first = 0;
+        while (first < result.size() && std::isspace(
+            static_cast<unsigned char>(result[first])))
+        {
+            ++first;
+        }
+        return result.substr(first);
+    }
+
         
     struct QuantityInfo
     {
@@ -1044,6 +1162,18 @@ namespace ItemInfo
 
         info.instanceFound =
             quantities.instanceFound;
+
+        // ========================================================
+        // TEXTO DE LIVROS
+        // ========================================================
+
+        if (auto* book = form->As<RE::TESObjectBOOK>())
+        {
+            RE::BSString rawBookText;
+            book->GetDescription(rawBookText, book);
+            if (const char* text = rawBookText.c_str(); text && text[0] != '\0')
+                info.bookText = ExtractPlainBookText(text);
+        }
 
         // ========================================================
         // EXTRAI ATRIBUTOS DE ARMAS

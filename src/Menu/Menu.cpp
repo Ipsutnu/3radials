@@ -21417,6 +21417,51 @@ namespace Menu
         );
     }
 
+    static float DrawWrappedItemInfoText(
+        ImDrawList* draw,
+        const ImVec2& position,
+        float width,
+        ImU32 color,
+        const std::string& text,
+        float alpha)
+    {
+        if (!draw || text.empty() || width <= 0.0f)
+            return 0.0f;
+
+        auto* font = ImGui::GetFont();
+        const float fontSize = ImGui::GetFontSize();
+        if (!font || fontSize <= 0.0f)
+            return 0.0f;
+
+        // O overload com wrap_width preserva o font atual do painel e deixa
+        // o ImGui calcular as quebras, inclusive para texto UTF-8 localizado.
+        const ImVec2 size = font->CalcTextSizeA(
+            fontSize,
+            FLT_MAX,
+            width,
+            text.c_str());
+        const ImU32 shadow = FadeColor(IM_COL32(0, 0, 0, 190), alpha);
+
+        draw->AddText(
+            font,
+            fontSize,
+            ImVec2(position.x + 1.0f, position.y + 1.0f),
+            shadow,
+            text.c_str(),
+            nullptr,
+            width);
+        draw->AddText(
+            font,
+            fontSize,
+            position,
+            color,
+            text.c_str(),
+            nullptr,
+            width);
+
+        return size.y;
+    }
+
     static float DrawSettingsItemInfo(
         const ItemInfo::Data& info,
         const RadialItem* radialItem,
@@ -21579,6 +21624,27 @@ namespace Menu
                     )
                 );
             }
+        }
+
+        // ========================================================
+        // TEXTO DO LIVRO
+        //
+        // É exibido sem título, logo após Quantity, como solicitado. O
+        // texto já chega sem as tags do BookMenu e usa o mesmo font, cores e
+        // sombra aplicados às informações do painel.
+        // ========================================================
+
+        if (!info.bookText.empty())
+        {
+            y += 8.0f * descriptorScale;
+            y += DrawWrappedItemInfoText(
+                draw,
+                ImVec2(position.x, y),
+                panelWidth,
+                white,
+                info.bookText,
+                alpha);
+            y += 12.0f * descriptorScale;
         }
 
         // ========================================================

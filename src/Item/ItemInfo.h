@@ -71,6 +71,10 @@ namespace ItemInfo
 
         std::string name;
 
+        // Texto de leitura de um livro, já limpo das marcações usadas pelo
+        // BookMenu do Skyrim. Vazio para livros sem conteúdo textual.
+        std::string bookText;
+
         RE::FormType formType = RE::FormType::None;
 
         EnchantmentInfo enchantment;
