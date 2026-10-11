@@ -2782,9 +2782,10 @@ namespace Menu
             if (!actor || event->holder != actor.get())
                 return RE::BSEventNotifyControl::kContinue;
 
-            spdlog::info(
-                "SPELL UNEQUIP ANIM EVENT | tag='{}' | payload='{}'",
-                event->tag.c_str(), event->payload.c_str());
+            //spdlog::info(
+            //    "SPELL UNEQUIP ANIM EVENT | tag='{}' | payload='{}'",
+            //    event->tag.c_str(), event->payload.c_str());
+            
             return RE::BSEventNotifyControl::kContinue;
         }
     };
@@ -2804,8 +2805,8 @@ namespace Menu
         // já está conectado ao graph; nesse caso a captura continua válida.
         capture.active = true;
 
-        spdlog::info("SPELL UNEQUIP ANIM CAPTURE | active=true | registeredNow={}",
-            registeredNow);
+        //spdlog::info("SPELL UNEQUIP ANIM CAPTURE | active=true | registeredNow={}",
+        //    registeredNow);
     }
 
         
