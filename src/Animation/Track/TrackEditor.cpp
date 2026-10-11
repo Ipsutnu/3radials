@@ -1185,17 +1185,11 @@ namespace TrackEditor
         draw->AddText(ImVec2(ox, top + 20.0f),
             IM_COL32(225, 207, 165, 255), Tr("custom_radial_editor"));
 
-        g_zoomOut = { ImVec2(ox, top + 54), ImVec2(ox + 62, top + 88) };
-        g_zoomIn = { ImVec2(ox + 70, top + 54), ImVec2(ox + 132, top + 88) };
-        g_reset = { ImVec2(ox + 140, top + 54), ImVec2(ox + 350, top + 88) };
         g_selectButton = {};
-        Button(draw, g_zoomOut, Tr("zoom_out")); Button(draw, g_zoomIn, Tr("zoom_in"));
-        Button(draw, g_reset, Tr("reset_view"));
-        g_flipPoles = { ImVec2(ox + 90, top + 96), ImVec2(ox + 260, top + 130) };
-        Button(draw, g_flipPoles, Tr("clear_terminals"));
-        g_presetSave = { ImVec2(ox, top + 138), ImVec2(ox + 110, top + 172) };
-        g_presetLoad = { ImVec2(ox + 120, top + 138), ImVec2(ox + 230, top + 172) };
-        g_presetReset = { ImVec2(ox + 240, top + 138), ImVec2(ox + 350, top + 172) };
+        // Linha 1: gerenciamento de presets.
+        g_presetSave = { ImVec2(ox, top + 54), ImVec2(ox + 110, top + 88) };
+        g_presetLoad = { ImVec2(ox + 120, top + 54), ImVec2(ox + 230, top + 88) };
+        g_presetReset = { ImVec2(ox + 240, top + 54), ImVec2(ox + 350, top + 88) };
         const bool presetCanSave = Track::IsValid(Track::CustomLayout());
         if (presetCanSave) Button(draw, g_presetSave, Tr("save"));
         else
@@ -1207,6 +1201,16 @@ namespace TrackEditor
         }
         Button(draw, g_presetLoad, Tr("load"), g_presetListOpen);
         Button(draw, g_presetReset, Tr("reset"));
+
+        // Linha 2: os dois zooms compartilham toda a largura do painel.
+        g_zoomOut = { ImVec2(ox, top + 96), ImVec2(ox + 170, top + 130) };
+        g_zoomIn = { ImVec2(ox + 180, top + 96), ImVec2(ox + 350, top + 130) };
+        Button(draw, g_zoomOut, Tr("zoom_out"));
+        Button(draw, g_zoomIn, Tr("zoom_in"));
+
+        // Linha 3: restaurar a visão ocupa toda a linha.
+        g_reset = { ImVec2(ox, top + 138), ImVec2(ox + 350, top + 172) };
+        Button(draw, g_reset, Tr("reset_view"));
 
         const float contentHeight = 1940.0f;
         const float visibleHeight = std::max(1.0f, viewportHeight - 280.0f);
@@ -1281,10 +1285,15 @@ namespace TrackEditor
         else
             DisabledButton(draw, g_duplicateSelectedButton, Tr("duplicate_selected"));
 
-        draw->AddText(ImVec2(ox, top + 1174 + sy),
+        // Mantém o mesmo tamanho do botão de duplicar e fica logo abaixo dele.
+        g_flipPoles = {
+            ImVec2(ox + 35, top + 1142 + sy), ImVec2(ox + 315, top + 1184 + sy) };
+        Button(draw, g_flipPoles, Tr("clear_terminals"));
+
+        draw->AddText(ImVec2(ox, top + 1194 + sy),
             IM_COL32(225, 207, 165, 255), Tr("radial_editor_section"));
-        draw->AddLine(ImVec2(ox + 72, top + 1184 + sy),
-            ImVec2(ox + 350, top + 1184 + sy), IM_COL32(190, 150, 70, 210), 1.2f);
+        draw->AddLine(ImVec2(ox + 72, top + 1204 + sy),
+            ImVec2(ox + 350, top + 1204 + sy), IM_COL32(190, 150, 70, 210), 1.2f);
         g_radialShapeSlider = {
             ImVec2(ox, top + 1242 + sy), ImVec2(ox + 350, top + 1264 + sy) };
         g_radialRotationSlider = {
@@ -1768,7 +1777,18 @@ namespace TrackEditor
                 // global pode divergir do radial real (especialmente depois de
                 // carregar/trocar um layout) e classificar todos os ícones como
                 // principais, esvaziando o preview do circuito excedente.
-                mainVisibleCount = std::clamp(mainVisibleCount, 0, iconCount);
+                // Os fantasmas entram no preview antes da divisão entre
+                // radial principal e excedente. Recalcular aqui permite que
+                // preencham primeiro as casas principais ainda vazias.
+                const float stretchCapacity = 25.0f +
+                    std::clamp(Config::g_radialStretch, 0.0f, 80.0f) *
+                        (25.0f / 80.0f);
+                const int maximumMainSlots = std::clamp(
+                    static_cast<int>(std::floor(stretchCapacity)), 25, 50);
+                const int previewMainCapacity = std::clamp(
+                    static_cast<int>(std::lround(Config::g_radialQuantity)),
+                    3, maximumMainSlots);
+                mainVisibleCount = std::min(iconCount, previewMainCapacity);
                 const int overflowCount = iconCount - mainVisibleCount;
                 const auto circuit = Track::BuildCircuit(
                     layout, center, radius, true, CurrentRadialShape());
@@ -2192,11 +2212,6 @@ namespace TrackEditor
         if (Inside(mouse, g_zoomOut)) { g_zoom = std::max(0.35f, g_zoom - 0.1f); return true; }
         if (Inside(mouse, g_zoomIn)) { g_zoom = std::min(2.5f, g_zoom + 0.1f); return true; }
         if (Inside(mouse, g_reset)) { g_zoom = 1.0f; g_pan = {}; return true; }
-        if (Inside(mouse, g_flipPoles))
-        {
-            Track::CustomLayout().gates.clear();
-            return true;
-        }
         if (Inside(mouse, g_presetSave))
         {
             if (Track::IsValid(Track::CustomLayout()))
@@ -2300,6 +2315,11 @@ namespace TrackEditor
         if (insideScrollableClip && Inside(mouse, g_duplicateSelectedButton) && Selected())
         {
             DuplicateSelected();
+            return true;
+        }
+        if (insideScrollableClip && Inside(mouse, g_flipPoles))
+        {
+            Track::CustomLayout().gates.clear();
             return true;
         }
         if (insideScrollableClip && Inside(mouse, g_eraseRadialButton))

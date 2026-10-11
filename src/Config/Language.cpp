@@ -60,6 +60,8 @@ namespace Language
             { "show_item_quantity", "Show Item Quantity" },
             { "show_overflow_icon", "Show Icon inside Overflow" },
             { "draw_mark_distance", "Draw Mark Distance" },
+            { "draw_section", "DRAW" }, { "layout_central", "CENTRAL" },
+            { "layout_top", "TOP" }, { "layout_bottom", "BOTTOM" },
             { "item_opacity", "General Item Opacity" },
             { "general_item_size", "General Item Size" },
             { "slot_section", "SLOT" }, { "icon_section", "ICON" },

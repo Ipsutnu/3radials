@@ -799,6 +799,7 @@ namespace Menu
         ItemBottom,
         ItemBottomSlot,
         ItemBottomIcon,
+        Draw,
         Radial,
         Top,
         Bottom,
@@ -15144,7 +15145,7 @@ namespace Menu
             QUICK_DRAW_EDITOR_RADIUS,
             FadeColor(IM_COL32(255, 255, 255, 240), alpha), 5.0f);
 
-        constexpr ImVec2 buttonSize(100.0f, 30.0f);
+        constexpr ImVec2 buttonSize(110.0f, 40.0f);
         
         const float buttonsY = center.y + QUICK_DRAW_EDITOR_RADIUS + 28.0f;
         
@@ -15158,12 +15159,12 @@ namespace Menu
             const bool hovered = PointInQuickDrawRect(g_settingsMousePos, min, max);
         
             draw->AddRectFilled(min, max, hovered
-                ? FadeColor(IM_COL32(235, 235, 235, 225), alpha)
+                ? FadeColor(IM_COL32(235, 235, 235, 160), alpha)
                 : FadeColor(IM_COL32(42, 42, 42, 205), alpha), 3.0f);
         
-            draw->AddRect(min, max, FadeColor(hovered
-                ? IM_COL32(215, 195, 150, 255)
-                : IM_COL32(190, 190, 190, 190), alpha), 3.0f, 0, 1.0f);
+            //draw->AddRect(min, max, FadeColor(hovered
+            //    ? IM_COL32(215, 195, 150, 255)
+            //    : IM_COL32(190, 190, 190, 190), alpha), 3.0f, 0, 1.0f);
         
             const ImVec2 text = ImGui::CalcTextSize(label);
         
@@ -15172,6 +15173,7 @@ namespace Menu
                 FadeColor(hovered ? IM_COL32(25, 25, 25, 255) :
                     IM_COL32(240, 240, 240, 255), alpha), label);
         };
+
         drawButton(g_quickDrawEditorResetMin, g_quickDrawEditorResetMax,
             Language::Get("reset").c_str());
         
@@ -24314,9 +24316,8 @@ namespace Menu
         std::array<int, 4> itemToggleRows{ -1, -1, -1, -1 };
         
         for (int& row : itemToggleRows) row = nextRow++;
-        addSliderRow(LayoutSlider::DrawMarkDistance);
-
-        const int itemPreviewHeaderRow = nextRow++;
+        int itemPreviewHeaderRow = -1;
+        int drawHeaderRow = -1;
         
         int previewMenuHeaderRow = -1;
         int previewTopHeaderRow = -1;
@@ -24372,35 +24373,6 @@ namespace Menu
             }
         };
         
-        if (groupExpanded(LayoutGroup::ItemPreview))
-        {
-            const auto addPreviewRows = [&](LayoutSlider first) {
-                for (std::size_t offset = 0; offset < 6; ++offset)
-                    addSliderRow(static_cast<LayoutSlider>(
-                        static_cast<std::size_t>(first) + offset));
-            };
-            previewMenuHeaderRow = nextRow++;
-            if (groupExpanded(LayoutGroup::PreviewMenu))
-                addPreviewRows(LayoutSlider::PreviewMenuItemSize);
-            previewTopHeaderRow = nextRow++;
-            if (groupExpanded(LayoutGroup::PreviewTop))
-                addPreviewRows(LayoutSlider::PreviewTopItemSize);
-            previewBottomHeaderRow = nextRow++;
-            if (groupExpanded(LayoutGroup::PreviewBottom))
-                addPreviewRows(LayoutSlider::PreviewBottomItemSize);
-            previewRightHeaderRow = nextRow++;
-            if (groupExpanded(LayoutGroup::PreviewRight))
-                addPreviewRows(LayoutSlider::PreviewRightItemSize);
-            previewLeftHeaderRow = nextRow++;
-            if (groupExpanded(LayoutGroup::PreviewLeft))
-                addPreviewRows(LayoutSlider::PreviewLeftItemSize);
-            for (std::size_t slider = static_cast<std::size_t>(
-                     LayoutSlider::PreviewSpellSizeMultiplier);
-                 slider <= static_cast<std::size_t>(
-                     LayoutSlider::PreviewScrollSizeMultiplier); ++slider)
-                addSliderRow(static_cast<LayoutSlider>(slider));
-        }
-
         itemRadialHeaderRow = nextRow++;
         if (groupExpanded(LayoutGroup::ItemRadial))
         {
@@ -24487,6 +24459,40 @@ namespace Menu
                 addColorRow(LayoutColorControl::BottomIcon, bottomIconColorRow);
                 addSliderRow(LayoutSlider::BottomIconOpacity);
             }
+        }
+
+        drawHeaderRow = nextRow++;
+        if (groupExpanded(LayoutGroup::Draw))
+            addSliderRow(LayoutSlider::DrawMarkDistance);
+
+        itemPreviewHeaderRow = nextRow++;
+        if (groupExpanded(LayoutGroup::ItemPreview))
+        {
+            const auto addPreviewRows = [&](LayoutSlider first) {
+                for (std::size_t offset = 0; offset < 6; ++offset)
+                    addSliderRow(static_cast<LayoutSlider>(
+                        static_cast<std::size_t>(first) + offset));
+            };
+            previewMenuHeaderRow = nextRow++;
+            if (groupExpanded(LayoutGroup::PreviewMenu))
+                addPreviewRows(LayoutSlider::PreviewMenuItemSize);
+            previewTopHeaderRow = nextRow++;
+            if (groupExpanded(LayoutGroup::PreviewTop))
+                addPreviewRows(LayoutSlider::PreviewTopItemSize);
+            previewBottomHeaderRow = nextRow++;
+            if (groupExpanded(LayoutGroup::PreviewBottom))
+                addPreviewRows(LayoutSlider::PreviewBottomItemSize);
+            previewRightHeaderRow = nextRow++;
+            if (groupExpanded(LayoutGroup::PreviewRight))
+                addPreviewRows(LayoutSlider::PreviewRightItemSize);
+            previewLeftHeaderRow = nextRow++;
+            if (groupExpanded(LayoutGroup::PreviewLeft))
+                addPreviewRows(LayoutSlider::PreviewLeftItemSize);
+            for (std::size_t slider = static_cast<std::size_t>(
+                     LayoutSlider::PreviewSpellSizeMultiplier);
+                 slider <= static_cast<std::size_t>(
+                     LayoutSlider::PreviewScrollSizeMultiplier); ++slider)
+                addSliderRow(static_cast<LayoutSlider>(slider));
         }
 
         itemOverflowHeaderRow = nextRow++;
@@ -24775,9 +24781,44 @@ namespace Menu
                 FadeColor(IM_COL32(215, 195, 150, 75), alpha), 1.0f);
         };
         
+        drawSectionTitle(itemRadialHeaderRow, Language::Get("layout_central").c_str(),
+            LayoutGroup::ItemRadial);
+        
+        if (groupExpanded(LayoutGroup::ItemRadial))
+        {
+            drawSectionTitle(itemSlotHeaderRow, Language::Get("slot_section").c_str(),
+                LayoutGroup::ItemSlot, 14.0f * controlScale);
+            drawSectionTitle(itemIconHeaderRow, Language::Get("icon_section").c_str(),
+                LayoutGroup::ItemIcon, 14.0f * controlScale);
+        }
+        
+        drawSectionTitle(itemTopHeaderRow, Language::Get("layout_top").c_str(),
+            LayoutGroup::ItemTop);
+        
+        if (groupExpanded(LayoutGroup::ItemTop))
+        {
+            drawSectionTitle(itemTopSlotHeaderRow, Language::Get("slot_section").c_str(),
+                LayoutGroup::ItemTopSlot, 14.0f * controlScale);
+            drawSectionTitle(itemTopIconHeaderRow, Language::Get("icon_section").c_str(),
+                LayoutGroup::ItemTopIcon, 14.0f * controlScale);
+        }
+        
+        drawSectionTitle(itemBottomHeaderRow, Language::Get("layout_bottom").c_str(),
+            LayoutGroup::ItemBottom);
+        
+        if (groupExpanded(LayoutGroup::ItemBottom))
+        {
+            drawSectionTitle(itemBottomSlotHeaderRow, Language::Get("slot_section").c_str(),
+                LayoutGroup::ItemBottomSlot, 14.0f * controlScale);
+            drawSectionTitle(itemBottomIconHeaderRow, Language::Get("icon_section").c_str(),
+                LayoutGroup::ItemBottomIcon, 14.0f * controlScale);
+        }
+
+        drawSectionTitle(drawHeaderRow, Language::Get("draw_section").c_str(),
+            LayoutGroup::Draw);
+
         drawSectionTitle(itemPreviewHeaderRow, Language::Get("item_section").c_str(),
             LayoutGroup::ItemPreview);
-        
         if (groupExpanded(LayoutGroup::ItemPreview))
         {
             drawSectionTitle(previewMenuHeaderRow, Language::Get("preview_menu_section").c_str(),
@@ -24790,39 +24831,6 @@ namespace Menu
                 LayoutGroup::PreviewRight, 14.0f * controlScale);
             drawSectionTitle(previewLeftHeaderRow, Language::Get("left_section").c_str(),
                 LayoutGroup::PreviewLeft, 14.0f * controlScale);
-        }
-        
-        drawSectionTitle(itemRadialHeaderRow, Language::Get("radial_section").c_str(),
-            LayoutGroup::ItemRadial);
-        
-        if (groupExpanded(LayoutGroup::ItemRadial))
-        {
-            drawSectionTitle(itemSlotHeaderRow, Language::Get("slot_section").c_str(),
-                LayoutGroup::ItemSlot, 14.0f * controlScale);
-            drawSectionTitle(itemIconHeaderRow, Language::Get("icon_section").c_str(),
-                LayoutGroup::ItemIcon, 14.0f * controlScale);
-        }
-        
-        drawSectionTitle(itemTopHeaderRow, Language::Get("top_section").c_str(),
-            LayoutGroup::ItemTop);
-        
-        if (groupExpanded(LayoutGroup::ItemTop))
-        {
-            drawSectionTitle(itemTopSlotHeaderRow, Language::Get("slot_section").c_str(),
-                LayoutGroup::ItemTopSlot, 14.0f * controlScale);
-            drawSectionTitle(itemTopIconHeaderRow, Language::Get("icon_section").c_str(),
-                LayoutGroup::ItemTopIcon, 14.0f * controlScale);
-        }
-        
-        drawSectionTitle(itemBottomHeaderRow, Language::Get("bottom_section").c_str(),
-            LayoutGroup::ItemBottom);
-        
-        if (groupExpanded(LayoutGroup::ItemBottom))
-        {
-            drawSectionTitle(itemBottomSlotHeaderRow, Language::Get("slot_section").c_str(),
-                LayoutGroup::ItemBottomSlot, 14.0f * controlScale);
-            drawSectionTitle(itemBottomIconHeaderRow, Language::Get("icon_section").c_str(),
-                LayoutGroup::ItemBottomIcon, 14.0f * controlScale);
         }
         
         drawSectionTitle(itemOverflowHeaderRow, Language::Get("overflow_section").c_str(),
